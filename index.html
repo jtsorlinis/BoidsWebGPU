@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bunnybench</title>
+  </head>
+  <body>
+    <div id="ui">
+      <div id="boidText">Boids: 0</div>
+      <div id="fpsText">FPS: 00</div>
+      <input type="range" id="boidSlider" min="32" max="50000" value="32" />
+    </div>
+    <canvas id="renderCanvas" touch-action="none">
+    </canvas>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
