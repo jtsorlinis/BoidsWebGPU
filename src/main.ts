@@ -108,7 +108,7 @@ let gridOffsetsBuffer: StorageBuffer;
 let gridOffsetsBuffer2: StorageBuffer;
 let gridTotalCells: number;
 
-// TODO: when theres an easier way to pass a single uint to a compute shader, use that
+// TODO: when theres an easier way to pass a single uint to a compute shader multiple times per frame, use that
 const dividers: UniformBuffer[] = [];
 for (let i = 0; i < 25; i++) {
   const divider = new UniformBuffer(
@@ -300,12 +300,13 @@ engine.runRenderLoop(async () => {
     dBufferInd++;
   }
 
-  // TODO: why is this not working?
+  // // Left for testing in-case I need to debug the prefix sum
   // const test = new Uint32Array((await gridOffsetsBuffer.read()).buffer);
   // const test2 = new Uint32Array((await gridOffsetsBuffer2.read()).buffer);
   // console.log(test2.at(-1), test.at(-1));
   // // console.log(...test.slice(0, 5), ...test2.slice(0, 5));
   // return;
+
   rearrangeBoidsComputeShader.setStorageBuffer(
     "gridOffsets",
     swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
