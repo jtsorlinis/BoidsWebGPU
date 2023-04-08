@@ -20,7 +20,7 @@ import {
   updateGridComputeSource,
 } from "./gridComputeShader";
 
-let numBoids = 1100;
+let numBoids = 32;
 const edgeMargin = 0.5;
 const maxSpeed = 2;
 const visualRange = 0.5;
@@ -107,7 +107,20 @@ let gridBuffer: StorageBuffer;
 let gridOffsetsBuffer: StorageBuffer;
 let gridOffsetsBuffer2: StorageBuffer;
 let gridTotalCells: number;
-let divider: UniformBuffer;
+
+// TODO: when theres an easier way to pass a single uint to a compute shader, use that
+const dividers: UniformBuffer[] = [];
+for (let i = 0; i < 25; i++) {
+  const divider = new UniformBuffer(
+    engine,
+    undefined,
+    false,
+    `dividerBuffer${i}`
+  );
+  divider.updateUInt("divider", 1 << i);
+  divider.update();
+  dividers.push(divider);
+}
 
 const params = new UniformBuffer(engine, undefined, true, "params");
 params.addUniform("numBoids", 1);
@@ -228,8 +241,6 @@ const setup = () => {
   gridBuffer = new StorageBuffer(engine, numBoids * 8);
   gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
   gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
-  divider = new UniformBuffer(engine, undefined, false, "dividerBuffer");
-  divider.addUniform("divider", 1);
 
   clearGridComputeShader.setUniformBuffer("params", params);
   clearGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
@@ -240,7 +251,7 @@ const setup = () => {
   updateGridComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
 
   prefixSumComputeShader.setUniformBuffer("params", params);
-  prefixSumComputeShader.setUniformBuffer("divider", divider);
+  prefixSumComputeShader.setUniformBuffer("divider", dividers[0]);
 
   rearrangeBoidsComputeShader.setUniformBuffer("params", params);
   rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
@@ -258,7 +269,7 @@ const setup = () => {
 
 setup();
 
-boidSlider.oninput = (e) => {
+boidSlider.oninput = () => {
   numBoids = boidSlider.valueAsNumber;
   scene.dispose();
   setup();
@@ -272,6 +283,7 @@ engine.runRenderLoop(async () => {
   updateGridComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
 
   let swap = false;
+  let dBufferInd = 0;
   for (let d = 1; d < gridTotalCells; d *= 2) {
     prefixSumComputeShader.setStorageBuffer(
       "gridOffsetsIn",
@@ -281,12 +293,19 @@ engine.runRenderLoop(async () => {
       "gridOffsetsOut",
       swap ? gridOffsetsBuffer : gridOffsetsBuffer2
     );
-    divider.updateUInt("divider", d);
-    divider.update();
+
+    prefixSumComputeShader.setUniformBuffer("divider", dividers[dBufferInd]);
     prefixSumComputeShader.dispatch(Math.ceil(gridTotalCells / 256), 1, 1);
     swap = !swap;
+    dBufferInd++;
   }
 
+  // TODO: why is this not working?
+  // const test = new Uint32Array((await gridOffsetsBuffer.read()).buffer);
+  // const test2 = new Uint32Array((await gridOffsetsBuffer2.read()).buffer);
+  // console.log(test2.at(-1), test.at(-1));
+  // // console.log(...test.slice(0, 5), ...test2.slice(0, 5));
+  // return;
   rearrangeBoidsComputeShader.setStorageBuffer(
     "gridOffsets",
     swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
@@ -295,13 +314,7 @@ engine.runRenderLoop(async () => {
     "gridOffsets",
     swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
   );
-
   rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
-
-  // TODO: why is this not working?
-  // const test = new Uint32Array((await gridOffsetsBuffer.read()).buffer);
-  // const test2 = new Uint32Array((await gridOffsetsBuffer2.read()).buffer);
-  // console.log(swap ? test2.at(-1) : test.at(-1));
 
   boidComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
   scene.render();
