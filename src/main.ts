@@ -34,6 +34,10 @@ const engine = new WebGPUEngine(canvas);
 await engine.initAsync();
 
 let scene: Scene;
+let zoom: number;
+let orthoSize: number;
+let aspectRatio: number;
+let camera: FreeCamera;
 const boidComputeShader = new ComputeShader(
   "boidsCompute",
   engine,
@@ -143,10 +147,11 @@ params.addUniform("gridTotalCells", 1);
 const setup = () => {
   boidText.innerHTML = `Boids: ${numBoids}`;
   scene = new Scene(engine);
-  var camera = new FreeCamera("camera1", new Vector3(0, 0, -5), scene);
+  camera = new FreeCamera("camera1", new Vector3(0, 0, -5), scene);
   camera.mode = 1;
-  const aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
-  const orthoSize = Math.max(2, Math.sqrt(numBoids) / 10 + edgeMargin);
+  aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
+  orthoSize = Math.max(2, Math.sqrt(numBoids) / 10 + edgeMargin);
+  zoom = orthoSize;
   camera.orthoBottom = -orthoSize;
   camera.orthoTop = orthoSize;
   camera.orthoLeft = -orthoSize * aspectRatio;
@@ -218,6 +223,11 @@ const setup = () => {
   boidMesh.forcedInstanceCount = numBoids;
   boidMesh.setVerticesBuffer(boidPositionBuffer, false);
   boidMesh.setVerticesBuffer(boidVelocityBuffer, false);
+  boidMesh.showBoundingBox = true;
+  boidMesh.buildBoundingInfo(
+    new Vector3(-1000, -1000, 0),
+    new Vector3(1000, 1000, 0)
+  );
 
   params.updateUInt("numBoids", numBoids);
   params.updateFloat("xBound", xBound);
@@ -268,6 +278,22 @@ const setup = () => {
 };
 
 setup();
+
+canvas.addEventListener("wheel", (e) => {
+  zoom += e.deltaY * 0.001 * orthoSize;
+  orthoSize = zoom;
+  camera.orthoBottom = -orthoSize;
+  camera.orthoTop = orthoSize;
+  camera.orthoLeft = -orthoSize * aspectRatio;
+  camera.orthoRight = orthoSize * aspectRatio;
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (e.buttons) {
+    camera.position.x -= e.movementX * 0.0025 * orthoSize;
+    camera.position.y += e.movementY * 0.0025 * orthoSize;
+  }
+});
 
 boidSlider.oninput = () => {
   numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
