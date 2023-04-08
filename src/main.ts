@@ -13,10 +13,17 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { boidComputeSource } from "./boidComputeShader";
+import {
+  clearGridComputeSource,
+  prefixSumComputeSource,
+  rearrangeBoidsComputeSource,
+  updateGridComputeSource,
+} from "./gridComputeShader";
 
-let numBoids = 32;
+let numBoids = 1100;
 const edgeMargin = 0.5;
 const maxSpeed = 2;
+const visualRange = 0.5;
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const boidText = document.getElementById("boidText") as HTMLElement;
@@ -27,7 +34,80 @@ const engine = new WebGPUEngine(canvas);
 await engine.initAsync();
 
 let scene: Scene;
-let boidComputeShader: ComputeShader;
+const boidComputeShader = new ComputeShader(
+  "boidsCompute",
+  engine,
+  { computeSource: boidComputeSource },
+  {
+    bindingsMapping: {
+      params: { group: 0, binding: 0 },
+      boids: { group: 0, binding: 1 },
+      boidsIn: { group: 0, binding: 2 },
+      gridOffsets: { group: 0, binding: 3 },
+    },
+  }
+);
+
+const clearGridComputeShader = new ComputeShader(
+  "clearGrid",
+  engine,
+  { computeSource: clearGridComputeSource },
+  {
+    bindingsMapping: {
+      params: { group: 0, binding: 0 },
+      gridOffsets: { group: 0, binding: 1 },
+    },
+  }
+);
+
+const updateGridComputeShader = new ComputeShader(
+  "updateGrid",
+  engine,
+  { computeSource: updateGridComputeSource },
+  {
+    bindingsMapping: {
+      params: { group: 0, binding: 0 },
+      grid: { group: 0, binding: 1 },
+      gridOffsets: { group: 0, binding: 2 },
+      boids: { group: 0, binding: 3 },
+    },
+  }
+);
+
+const prefixSumComputeShader = new ComputeShader(
+  "prefixSum",
+  engine,
+  { computeSource: prefixSumComputeSource },
+  {
+    bindingsMapping: {
+      params: { group: 0, binding: 0 },
+      gridOffsetsIn: { group: 0, binding: 1 },
+      gridOffsetsOut: { group: 0, binding: 2 },
+      divider: { group: 0, binding: 3 },
+    },
+  }
+);
+
+const rearrangeBoidsComputeShader = new ComputeShader(
+  "rearrangeBoids",
+  engine,
+  { computeSource: rearrangeBoidsComputeSource },
+  {
+    bindingsMapping: {
+      params: { group: 0, binding: 0 },
+      grid: { group: 0, binding: 1 },
+      gridOffsets: { group: 0, binding: 2 },
+      boidsIn: { group: 0, binding: 3 },
+      boidsOut: { group: 0, binding: 4 },
+    },
+  }
+);
+
+let gridBuffer: StorageBuffer;
+let gridOffsetsBuffer: StorageBuffer;
+let gridOffsetsBuffer2: StorageBuffer;
+let gridTotalCells: number;
+let divider: UniformBuffer;
 
 const params = new UniformBuffer(engine, undefined, true, "params");
 params.addUniform("numBoids", 1);
@@ -42,6 +122,10 @@ params.addUniform("cohesionFactor", 1);
 params.addUniform("alignmentFactor", 1);
 params.addUniform("separationFactor", 1);
 params.addUniform("dt", 1);
+params.addUniform("gridDimX", 1);
+params.addUniform("gridDimY", 1);
+params.addUniform("gridCellSize", 1);
+params.addUniform("gridTotalCells", 1);
 
 const setup = () => {
   boidText.innerHTML = `Boids: ${numBoids}`;
@@ -58,6 +142,10 @@ const setup = () => {
   const xBound = orthoSize * aspectRatio - edgeMargin;
   const yBound = orthoSize - edgeMargin;
 
+  const gridDimX = Math.floor((xBound * 2) / visualRange) + 30;
+  const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
+  gridTotalCells = gridDimX * gridDimY;
+
   const stride = 4;
   const boids = new Float32Array(numBoids * stride);
   for (let i = 0; i < numBoids; ++i) {
@@ -69,7 +157,9 @@ const setup = () => {
     boids[stride * i + 3] = Math.random() - 0.5;
   }
 
+  // Boids
   const boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength, 8 | 2);
+  const boidsComputeBuffer2 = new StorageBuffer(engine, boids.byteLength);
   boidsComputeBuffer.update(boids);
 
   const boidPositionBuffer = new VertexBuffer(
@@ -122,27 +212,48 @@ const setup = () => {
   params.updateFloat("maxSpeed", maxSpeed);
   params.updateFloat("minSpeed", maxSpeed * 0.75);
   params.updateFloat("turnSpeed", maxSpeed * 3);
-  params.updateFloat("visualRange", 0.5);
+  params.updateFloat("visualRange", visualRange);
   params.updateFloat("minDistance", 0.15);
   params.updateFloat("cohesionFactor", 1);
   params.updateFloat("alignmentFactor", 5);
   params.updateFloat("separationFactor", 30);
+  params.updateUInt("gridDimX", gridDimX);
+  params.updateUInt("gridDimY", gridDimY);
+  params.updateFloat("gridCellSize", visualRange);
+  params.updateUInt("gridTotalCells", gridTotalCells);
 
   params.update();
 
-  boidComputeShader = new ComputeShader(
-    "bunniesCompute",
-    engine,
-    { computeSource: boidComputeSource },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        bunnies: { group: 0, binding: 1 },
-      },
-    }
+  // Grid
+  gridBuffer = new StorageBuffer(engine, numBoids * 8);
+  gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
+  gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
+  divider = new UniformBuffer(engine, undefined, false, "dividerBuffer");
+  divider.addUniform("divider", 1);
+
+  clearGridComputeShader.setUniformBuffer("params", params);
+  clearGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
+
+  updateGridComputeShader.setUniformBuffer("params", params);
+  updateGridComputeShader.setStorageBuffer("grid", gridBuffer);
+  updateGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
+  updateGridComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
+
+  prefixSumComputeShader.setUniformBuffer("params", params);
+  prefixSumComputeShader.setUniformBuffer("divider", divider);
+
+  rearrangeBoidsComputeShader.setUniformBuffer("params", params);
+  rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
+  rearrangeBoidsComputeShader.setStorageBuffer(
+    "gridOffsets",
+    gridOffsetsBuffer
   );
+  rearrangeBoidsComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer);
+  rearrangeBoidsComputeShader.setStorageBuffer("boidsOut", boidsComputeBuffer2);
+
   boidComputeShader.setUniformBuffer("params", params);
-  boidComputeShader.setStorageBuffer("bunnies", boidsComputeBuffer);
+  boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
+  boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
 };
 
 setup();
@@ -153,9 +264,44 @@ boidSlider.oninput = (e) => {
   setup();
 };
 
-engine.runRenderLoop(() => {
+engine.runRenderLoop(async () => {
   const fps = engine.getFps();
   fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
+
+  clearGridComputeShader.dispatch(Math.ceil(gridTotalCells / 256), 1, 1);
+  updateGridComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
+
+  let swap = false;
+  for (let d = 1; d < gridTotalCells; d *= 2) {
+    prefixSumComputeShader.setStorageBuffer(
+      "gridOffsetsIn",
+      swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
+    );
+    prefixSumComputeShader.setStorageBuffer(
+      "gridOffsetsOut",
+      swap ? gridOffsetsBuffer : gridOffsetsBuffer2
+    );
+    divider.updateUInt("divider", d);
+    divider.update();
+    prefixSumComputeShader.dispatch(Math.ceil(gridTotalCells / 256), 1, 1);
+    swap = !swap;
+  }
+
+  rearrangeBoidsComputeShader.setStorageBuffer(
+    "gridOffsets",
+    swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
+  );
+  boidComputeShader.setStorageBuffer(
+    "gridOffsets",
+    swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
+  );
+
+  rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
+
+  // TODO: why is this not working?
+  // const test = new Uint32Array((await gridOffsetsBuffer.read()).buffer);
+  // const test2 = new Uint32Array((await gridOffsetsBuffer2.read()).buffer);
+  // console.log(swap ? test2.at(-1) : test.at(-1));
 
   boidComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
   scene.render();

@@ -3,6 +3,7 @@ attribute vec2 boidPos;
 attribute vec2 boidVel;
 
 uniform mat4 worldViewProjection;
+varying vec2 vel;
 
 void main() {
     float angle = -atan(boidVel.x, boidVel.y);
@@ -12,4 +13,5 @@ void main() {
     );
     pos *= 0.1;
     gl_Position = worldViewProjection * vec4(pos + boidPos, 0.0, 1.0);;
+    vel = boidVel;
 }
