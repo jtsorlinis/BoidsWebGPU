@@ -223,10 +223,9 @@ const setup = () => {
   boidMesh.forcedInstanceCount = numBoids;
   boidMesh.setVerticesBuffer(boidPositionBuffer, false);
   boidMesh.setVerticesBuffer(boidVelocityBuffer, false);
-  boidMesh.showBoundingBox = true;
   boidMesh.buildBoundingInfo(
-    new Vector3(-1000, -1000, 0),
-    new Vector3(1000, 1000, 0)
+    new Vector3(-xBound, -yBound, 0),
+    new Vector3(xBound, yBound, 0)
   );
 
   params.updateUInt("numBoids", numBoids);
