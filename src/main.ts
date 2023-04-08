@@ -270,7 +270,7 @@ const setup = () => {
 setup();
 
 boidSlider.oninput = () => {
-  numBoids = boidSlider.valueAsNumber;
+  numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
   scene.dispose();
   setup();
 };
