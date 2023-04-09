@@ -1,13 +1,11 @@
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "./style.css";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import {
-  ComputeShader,
-  Mesh,
-  UniformBuffer,
-  VertexData,
-  WebGPUEngine,
-} from "@babylonjs/core";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
+import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
+import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
