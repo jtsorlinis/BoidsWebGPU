@@ -113,6 +113,7 @@ let gridOffsetsBuffer2: StorageBuffer;
 let gridTotalCells: number;
 
 // TODO: when theres an easier way to pass a single uint to a compute shader multiple times per frame, use that
+// eg. https://github.com/gpuweb/gpuweb/issues/75
 const dividers: UniformBuffer[] = [];
 for (let i = 0; i < 25; i++) {
   const divider = new UniformBuffer(
