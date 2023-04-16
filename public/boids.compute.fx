@@ -1,8 +1,4 @@
-import { Boid, Params } from "./types";
-
-export const boidComputeSource = `
-${Params}
-${Boid}
+#include<boidInclude>
 
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read_write> boids : array<Boid>;
@@ -94,4 +90,3 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
 
   boids[index] = boid;
 }
-`;

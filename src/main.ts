@@ -10,13 +10,7 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
-import { boidComputeSource } from "./boidComputeShader";
-import {
-  clearGridComputeSource,
-  prefixSumComputeSource,
-  rearrangeBoidsComputeSource,
-  updateGridComputeSource,
-} from "./gridComputeShader";
+import "./shaderIncludes";
 
 let numBoids = 32;
 const edgeMargin = 0.5;
@@ -36,24 +30,20 @@ let zoom: number;
 let orthoSize: number;
 let aspectRatio: number;
 let camera: FreeCamera;
-const boidComputeShader = new ComputeShader(
-  "boidsCompute",
-  engine,
-  { computeSource: boidComputeSource },
-  {
-    bindingsMapping: {
-      params: { group: 0, binding: 0 },
-      boids: { group: 0, binding: 1 },
-      boidsIn: { group: 0, binding: 2 },
-      gridOffsets: { group: 0, binding: 3 },
-    },
-  }
-);
+
+const boidComputeShader = new ComputeShader("boids", engine, "./boids", {
+  bindingsMapping: {
+    params: { group: 0, binding: 0 },
+    boids: { group: 0, binding: 1 },
+    boidsIn: { group: 0, binding: 2 },
+    gridOffsets: { group: 0, binding: 3 },
+  },
+});
 
 const clearGridComputeShader = new ComputeShader(
   "clearGrid",
   engine,
-  { computeSource: clearGridComputeSource },
+  "./clearGrid",
   {
     bindingsMapping: {
       params: { group: 0, binding: 0 },
@@ -65,7 +55,7 @@ const clearGridComputeShader = new ComputeShader(
 const updateGridComputeShader = new ComputeShader(
   "updateGrid",
   engine,
-  { computeSource: updateGridComputeSource },
+  "./updateGrid",
   {
     bindingsMapping: {
       params: { group: 0, binding: 0 },
@@ -79,7 +69,7 @@ const updateGridComputeShader = new ComputeShader(
 const prefixSumComputeShader = new ComputeShader(
   "prefixSum",
   engine,
-  { computeSource: prefixSumComputeSource },
+  "./prefixSum",
   {
     bindingsMapping: {
       params: { group: 0, binding: 0 },
@@ -93,7 +83,7 @@ const prefixSumComputeShader = new ComputeShader(
 const rearrangeBoidsComputeShader = new ComputeShader(
   "rearrangeBoids",
   engine,
-  { computeSource: rearrangeBoidsComputeSource },
+  "./rearrangeBoids",
   {
     bindingsMapping: {
       params: { group: 0, binding: 0 },

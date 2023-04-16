@@ -1,4 +1,6 @@
-export const Params = `
+import { ShaderStore } from "@babylonjs/core/Engines/shaderStore";
+
+ShaderStore.IncludesShadersStoreWGSL["boidInclude"] = `
 struct Params {
   numBoids: u32,
   xBound : f32,
@@ -17,9 +19,7 @@ struct Params {
   gridCellSize : f32,
   gridTotalCells : u32,
 };
-`;
 
-export const Boid = `
 struct Boid {
   pos : vec2<f32>,
   vel : vec2<f32>,
