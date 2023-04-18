@@ -75,7 +75,6 @@ const prefixSumComputeShader = new ComputeShader(
       params: { group: 0, binding: 0 },
       gridOffsetsIn: { group: 0, binding: 1 },
       gridOffsetsOut: { group: 0, binding: 2 },
-      divider: { group: 0, binding: 3 },
     },
   }
 );
@@ -100,22 +99,7 @@ let gridOffsetsBuffer: StorageBuffer;
 let gridOffsetsBuffer2: StorageBuffer;
 let gridTotalCells: number;
 
-// TODO: when theres an easier way to pass a single uint to a compute shader multiple times per frame, use that
-// eg. https://github.com/gpuweb/gpuweb/issues/75
-const dividers: UniformBuffer[] = [];
-for (let i = 0; i < 25; i++) {
-  const divider = new UniformBuffer(
-    engine,
-    undefined,
-    false,
-    `dividerBuffer${i}`
-  );
-  divider.updateUInt("divider", 1 << i);
-  divider.update();
-  dividers.push(divider);
-}
-
-const params = new UniformBuffer(engine, undefined, true, "params");
+const params = new UniformBuffer(engine, undefined, false, "params");
 params.addUniform("numBoids", 1);
 params.addUniform("xBound", 1);
 params.addUniform("yBound", 1);
@@ -132,6 +116,7 @@ params.addUniform("gridDimX", 1);
 params.addUniform("gridDimY", 1);
 params.addUniform("gridCellSize", 1);
 params.addUniform("gridTotalCells", 1);
+params.addUniform("divider", 1);
 
 const setup = () => {
   boidText.innerHTML = `Boids: ${numBoids}`;
@@ -249,7 +234,6 @@ const setup = () => {
   updateGridComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
 
   prefixSumComputeShader.setUniformBuffer("params", params);
-  prefixSumComputeShader.setUniformBuffer("divider", dividers[0]);
 
   rearrangeBoidsComputeShader.setUniformBuffer("params", params);
   rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
@@ -297,7 +281,6 @@ engine.runRenderLoop(async () => {
   updateGridComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
 
   let swap = false;
-  let dBufferInd = 0;
   for (let d = 1; d < gridTotalCells; d *= 2) {
     prefixSumComputeShader.setStorageBuffer(
       "gridOffsetsIn",
@@ -308,18 +291,11 @@ engine.runRenderLoop(async () => {
       swap ? gridOffsetsBuffer : gridOffsetsBuffer2
     );
 
-    prefixSumComputeShader.setUniformBuffer("divider", dividers[dBufferInd]);
+    params.updateUInt("divider", d);
+    params.update();
     prefixSumComputeShader.dispatch(Math.ceil(gridTotalCells / 256), 1, 1);
     swap = !swap;
-    dBufferInd++;
   }
-
-  // // Left for testing in-case I need to debug the prefix sum
-  // const test = new Uint32Array((await gridOffsetsBuffer.read()).buffer);
-  // const test2 = new Uint32Array((await gridOffsetsBuffer2.read()).buffer);
-  // console.log(test2.at(-1), test.at(-1));
-  // // console.log(...test.slice(0, 5), ...test2.slice(0, 5));
-  // return;
 
   rearrangeBoidsComputeShader.setStorageBuffer(
     "gridOffsets",
@@ -331,8 +307,8 @@ engine.runRenderLoop(async () => {
   );
   rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
 
+  params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
+  params.update();
   boidComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
   scene.render();
-  params.updateFloat("dt", scene.deltaTime / 1000);
-  params.update();
 });
