@@ -263,7 +263,10 @@ const setup = () => {
 setup();
 
 canvas.addEventListener("wheel", (e) => {
-  targetZoom += e.deltaY * orthoSize * 0.001;
+  const zoomDelta = e.deltaY * orthoSize * 0.001;
+  if (targetZoom + zoomDelta > 1) {
+    targetZoom += zoomDelta;
+  }
 });
 
 canvas.addEventListener("pointermove", (e) => {
