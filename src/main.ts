@@ -153,7 +153,6 @@ const setup = () => {
 
   const stride = 4;
   const boids = new Float32Array(numBoids * stride);
-  boids.fill(1); // Fill with 1s cause a velocity of 0 will crash the shader
 
   // Boids
   const boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength, 8 | 2);
