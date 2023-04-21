@@ -2,7 +2,7 @@ import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "./style.css";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
-import { Scalar, WebGPUEngine } from "@babylonjs/core";
+import { Scalar, ShaderLanguage, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -186,7 +186,8 @@ const setup = () => {
   // Load texture and materials
   const boidMat = new ShaderMaterial("boidMat", scene, "./boidShader", {
     attributes: ["position", "boidPos", "boidVel"],
-    uniforms: ["worldViewProjection"],
+    uniformBuffers: ["Scene"],
+    shaderLanguage: ShaderLanguage.WGSL,
   });
 
   // Create boid mesh
