@@ -31,6 +31,18 @@ let orthoSize: number;
 let aspectRatio: number;
 let camera: FreeCamera;
 
+const generateBoidsComputeShader = new ComputeShader(
+  "generateBoids",
+  engine,
+  "./generateBoids",
+  {
+    bindingsMapping: {
+      params: { group: 0, binding: 0 },
+      boids: { group: 0, binding: 1 },
+    },
+  }
+);
+
 const boidComputeShader = new ComputeShader("boids", engine, "./boids", {
   bindingsMapping: {
     params: { group: 0, binding: 0 },
@@ -117,6 +129,7 @@ params.addUniform("gridDimY", 1);
 params.addUniform("gridCellSize", 1);
 params.addUniform("gridTotalCells", 1);
 params.addUniform("divider", 1);
+params.addUniform("rngSeed", 1);
 
 const setup = () => {
   boidText.innerHTML = `Boids: ${numBoids}`;
@@ -140,14 +153,7 @@ const setup = () => {
 
   const stride = 4;
   const boids = new Float32Array(numBoids * stride);
-  for (let i = 0; i < numBoids; ++i) {
-    // Position
-    boids[stride * i + 0] = Math.random() * xBound * 2 - xBound;
-    boids[stride * i + 1] = Math.random() * yBound * 2 - yBound;
-    // Velocity
-    boids[stride * i + 2] = Math.random() - 0.5;
-    boids[stride * i + 3] = Math.random() - 0.5;
-  }
+  boids.fill(1); // Fill with 1s cause a velocity of 0 will crash the shader
 
   // Boids
   const boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength, 8 | 2);
@@ -217,6 +223,7 @@ const setup = () => {
   params.updateUInt("gridDimY", gridDimY);
   params.updateFloat("gridCellSize", visualRange);
   params.updateUInt("gridTotalCells", gridTotalCells);
+  params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
 
   params.update();
 
@@ -245,8 +252,13 @@ const setup = () => {
   rearrangeBoidsComputeShader.setStorageBuffer("boidsOut", boidsComputeBuffer2);
 
   boidComputeShader.setUniformBuffer("params", params);
-  boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
   boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
+  boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
+
+  // Generate boids on GPU
+  generateBoidsComputeShader.setUniformBuffer("params", params);
+  generateBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
+  generateBoidsComputeShader.dispatchWhenReady(Math.ceil(numBoids / 256), 1, 1);
 };
 
 setup();
