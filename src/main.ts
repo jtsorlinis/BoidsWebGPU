@@ -2,7 +2,7 @@ import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "./style.css";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
-import { WebGPUEngine } from "@babylonjs/core";
+import { Scalar, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -26,7 +26,7 @@ const engine = new WebGPUEngine(canvas);
 await engine.initAsync();
 
 let scene: Scene;
-let zoom: number;
+let targetZoom: number;
 let orthoSize: number;
 let aspectRatio: number;
 let camera: FreeCamera;
@@ -125,7 +125,7 @@ const setup = () => {
   camera.mode = 1;
   aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
   orthoSize = Math.max(2, Math.sqrt(numBoids) / 10 + edgeMargin);
-  zoom = orthoSize;
+  targetZoom = orthoSize;
   camera.orthoBottom = -orthoSize;
   camera.orthoTop = orthoSize;
   camera.orthoLeft = -orthoSize * aspectRatio;
@@ -252,12 +252,7 @@ const setup = () => {
 setup();
 
 canvas.addEventListener("wheel", (e) => {
-  zoom += e.deltaY * 0.001 * orthoSize;
-  orthoSize = zoom;
-  camera.orthoBottom = -orthoSize;
-  camera.orthoTop = orthoSize;
-  camera.orthoLeft = -orthoSize * aspectRatio;
-  camera.orthoRight = orthoSize * aspectRatio;
+  targetZoom += e.deltaY * orthoSize * 0.001;
 });
 
 canvas.addEventListener("pointermove", (e) => {
@@ -273,9 +268,21 @@ boidSlider.oninput = () => {
   setup();
 };
 
+const smoothZoom = () => {
+  if (Math.abs(orthoSize - targetZoom) > 0.01) {
+    const aspectRatio = engine.getAspectRatio(camera);
+    orthoSize = Scalar.Lerp(orthoSize, targetZoom, 0.1);
+    camera.orthoBottom = -orthoSize;
+    camera.orthoTop = orthoSize;
+    camera.orthoLeft = -orthoSize * aspectRatio;
+    camera.orthoRight = orthoSize * aspectRatio;
+  }
+};
+
 engine.runRenderLoop(async () => {
   const fps = engine.getFps();
   fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
+  smoothZoom();
 
   clearGridComputeShader.dispatch(Math.ceil(gridTotalCells / 256), 1, 1);
   updateGridComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
