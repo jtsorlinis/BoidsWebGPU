@@ -11,6 +11,8 @@ import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import "./shaderIncludes";
 
+const blockSize = 512;
+
 let numBoids = 32;
 const edgeMargin = 0.5;
 const maxSpeed = 2;
@@ -21,7 +23,10 @@ const boidText = document.getElementById("boidText") as HTMLElement;
 const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
 
 const fpsText = document.getElementById("fpsText") as HTMLElement;
-const engine = new WebGPUEngine(canvas);
+const engine = new WebGPUEngine(canvas, {
+  setMaximumLimits: true,
+  enableAllFeatures: true,
+});
 await engine.initAsync();
 
 let scene: Scene;
@@ -175,7 +180,7 @@ const setup = () => {
   const gridDimX = Math.floor((xBound * 2) / visualRange) + 30;
   const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
   gridTotalCells = gridDimX * gridDimY;
-  blocks = Math.ceil(gridTotalCells / 256);
+  blocks = Math.ceil(gridTotalCells / blockSize);
 
   const stride = 4;
   const boids = new Float32Array(numBoids * stride);
@@ -196,7 +201,7 @@ const setup = () => {
   // Create boid mesh
   var boidMesh = new Mesh("custom", scene);
   boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
-  boidMesh._unIndexed = true;
+  boidMesh.isUnIndexed = true;
   boidMesh.subMeshes[0].verticesCount = numBoids * 3;
 
   var positions = [0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0];
@@ -272,7 +277,11 @@ const setup = () => {
   // Generate boids on GPU
   generateBoidsComputeShader.setUniformBuffer("params", params);
   generateBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
-  generateBoidsComputeShader.dispatchWhenReady(Math.ceil(numBoids / 256), 1, 1);
+  generateBoidsComputeShader.dispatchWhenReady(
+    Math.ceil(numBoids / blockSize),
+    1,
+    1
+  );
 };
 
 setup();
@@ -314,7 +323,7 @@ engine.runRenderLoop(async () => {
   smoothZoom();
 
   clearGridComputeShader.dispatch(blocks, 1, 1);
-  updateGridComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
+  updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
   prefixSumComputeShader.dispatch(blocks, 1, 1);
 
@@ -331,7 +340,7 @@ engine.runRenderLoop(async () => {
 
     params.updateUInt("divider", d);
     params.update();
-    sumBucketsComputeShader.dispatch(Math.ceil(blocks / 256), 1, 1);
+    sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
     swap = !swap;
   }
 
@@ -340,10 +349,10 @@ engine.runRenderLoop(async () => {
     swap ? gridSumsBuffer2 : gridSumsBuffer
   );
   addSumsComputeShader.dispatch(blocks, 1, 1);
-  rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
+  rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
   params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
   params.update();
-  boidComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
+  boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
   scene.render();
 });

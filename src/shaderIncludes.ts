@@ -1,6 +1,8 @@
 import { ShaderStore } from "@babylonjs/core/Engines/shaderStore";
 
 ShaderStore.IncludesShadersStoreWGSL["boidInclude"] = `
+const blockSize: u32 = 512u;
+
 struct Params {
   numBoids: u32,
   xBound : f32,

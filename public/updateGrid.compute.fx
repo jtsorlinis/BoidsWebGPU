@@ -11,7 +11,7 @@ fn getGridID(boid: Boid) -> u32 {
   return (params.gridDimX * y) + x;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   var index : u32 = GlobalInvocationID.x;
 

@@ -5,7 +5,7 @@
 @binding(2) @group(0) var<storage, read_write> gridOffsetsOut : array<u32>;
 
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>, @builtin(workgroup_id) GroupID: vec3<u32>) {
   var globalID : u32 = GlobalInvocationID.x;
   var groupID : u32 = GroupID.x;

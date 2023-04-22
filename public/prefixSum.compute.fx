@@ -5,9 +5,9 @@
 @binding(2) @group(0) var<storage, read_write> gridOffsetsOut : array<u32>;
 @binding(3) @group(0) var<storage, read_write> gridSums : array<u32>;
 
-var<workgroup> temp : array<u32, 2 * 256>;
+var<workgroup> temp : array<u32, 2 * blockSize>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>, 
         @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
         @builtin(workgroup_id) GroupID: vec3<u32>) {
@@ -20,13 +20,13 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>,
   temp[localID] = gridOffsetsIn[globalID];
   workgroupBarrier();
 
-  for (var offset: u32 = 1; offset < 256; offset *= 2) {
+  for (var offset: u32 = 1; offset < blockSize; offset *= 2) {
     pout = 1 - pout; // swap double buffer indices
     pin = 1 - pout;
     if (localID >= offset) {
-        temp[pout * 256 + localID] = temp[pin * 256 + localID] + temp[pin * 256 + localID - offset];
+        temp[pout * blockSize + localID] = temp[pin * blockSize + localID] + temp[pin * blockSize + localID - offset];
     } else {
-        temp[pout * 256 + localID] = temp[pin * 256 + localID];
+        temp[pout * blockSize + localID] = temp[pin * blockSize + localID];
     }
     workgroupBarrier();
   }
@@ -36,8 +36,8 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>,
       return;
   }
 
-  gridOffsetsOut[globalID] = temp[pout * 256 + localID];
+  gridOffsetsOut[globalID] = temp[pout * blockSize + localID];
   if (localID == 0) {
-      gridSums[groupID] = temp[pout * 256 + 256 - 1];
+      gridSums[groupID] = temp[pout * blockSize + blockSize - 1];
   } 
 }
