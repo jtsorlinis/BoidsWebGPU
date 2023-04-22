@@ -6,7 +6,7 @@
 @binding(3) @group(0) var<storage, read> boidsIn : array<Boid>;
 @binding(4) @group(0) var<storage, read_write> boidsOut : array<Boid>;
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   var index : u32 = GlobalInvocationID.x;
 

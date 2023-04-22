@@ -13,7 +13,7 @@ fn rand_pcg(min: f32, max: f32) -> f32 {
   return float * (max - min) + min;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   var index : u32 = GlobalInvocationID.x;
   rngState = params.rngSeed + index;
