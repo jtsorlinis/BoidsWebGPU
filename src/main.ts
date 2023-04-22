@@ -86,9 +86,31 @@ const prefixSumComputeShader = new ComputeShader(
       params: { group: 0, binding: 0 },
       gridOffsetsIn: { group: 0, binding: 1 },
       gridOffsetsOut: { group: 0, binding: 2 },
+      gridSums: { group: 0, binding: 3 },
     },
   }
 );
+
+const sumBucketsComputeShader = new ComputeShader(
+  "sumBuckets",
+  engine,
+  "./sumBuckets",
+  {
+    bindingsMapping: {
+      params: { group: 0, binding: 0 },
+      gridSumsIn: { group: 0, binding: 1 },
+      gridSumsOut: { group: 0, binding: 2 },
+    },
+  }
+);
+
+const addSumsComputeShader = new ComputeShader("addSums", engine, "./addSums", {
+  bindingsMapping: {
+    params: { group: 0, binding: 0 },
+    gridSumsIn: { group: 0, binding: 1 },
+    gridOffsetsOut: { group: 0, binding: 2 },
+  },
+});
 
 const rearrangeBoidsComputeShader = new ComputeShader(
   "rearrangeBoids",
@@ -108,7 +130,10 @@ const rearrangeBoidsComputeShader = new ComputeShader(
 let gridBuffer: StorageBuffer;
 let gridOffsetsBuffer: StorageBuffer;
 let gridOffsetsBuffer2: StorageBuffer;
+let gridSumsBuffer: StorageBuffer;
+let gridSumsBuffer2: StorageBuffer;
 let gridTotalCells: number;
+let blocks: number;
 
 const params = new UniformBuffer(engine, undefined, false, "params");
 params.addUniform("numBoids", 1);
@@ -129,6 +154,7 @@ params.addUniform("gridCellSize", 1);
 params.addUniform("gridTotalCells", 1);
 params.addUniform("divider", 1);
 params.addUniform("rngSeed", 1);
+params.addUniform("blocks", 1);
 
 const setup = () => {
   boidText.innerHTML = `Boids: ${numBoids}`;
@@ -149,6 +175,7 @@ const setup = () => {
   const gridDimX = Math.floor((xBound * 2) / visualRange) + 30;
   const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
   gridTotalCells = gridDimX * gridDimY;
+  blocks = Math.ceil(gridTotalCells / 256);
 
   const stride = 4;
   const boids = new Float32Array(numBoids * stride);
@@ -199,6 +226,7 @@ const setup = () => {
   params.updateFloat("gridCellSize", visualRange);
   params.updateUInt("gridTotalCells", gridTotalCells);
   params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
+  params.updateUInt("blocks", blocks);
 
   params.update();
 
@@ -206,6 +234,8 @@ const setup = () => {
   gridBuffer = new StorageBuffer(engine, numBoids * 8);
   gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
   gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
+  gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
+  gridSumsBuffer2 = new StorageBuffer(engine, blocks * 4);
 
   clearGridComputeShader.setUniformBuffer("params", params);
   clearGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
@@ -216,12 +246,20 @@ const setup = () => {
   updateGridComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
 
   prefixSumComputeShader.setUniformBuffer("params", params);
+  prefixSumComputeShader.setStorageBuffer("gridOffsetsOut", gridOffsetsBuffer2);
+  prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
+  prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
+
+  sumBucketsComputeShader.setUniformBuffer("params", params);
+
+  addSumsComputeShader.setUniformBuffer("params", params);
+  addSumsComputeShader.setStorageBuffer("gridOffsetsOut", gridOffsetsBuffer2);
 
   rearrangeBoidsComputeShader.setUniformBuffer("params", params);
   rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
   rearrangeBoidsComputeShader.setStorageBuffer(
     "gridOffsets",
-    gridOffsetsBuffer
+    gridOffsetsBuffer2
   );
   rearrangeBoidsComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer);
   rearrangeBoidsComputeShader.setStorageBuffer("boidsOut", boidsComputeBuffer2);
@@ -229,6 +267,7 @@ const setup = () => {
   boidComputeShader.setUniformBuffer("params", params);
   boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
   boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
+  boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
 
   // Generate boids on GPU
   generateBoidsComputeShader.setUniformBuffer("params", params);
@@ -274,34 +313,33 @@ engine.runRenderLoop(async () => {
   fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
   smoothZoom();
 
-  clearGridComputeShader.dispatch(Math.ceil(gridTotalCells / 256), 1, 1);
+  clearGridComputeShader.dispatch(blocks, 1, 1);
   updateGridComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
+
+  prefixSumComputeShader.dispatch(blocks, 1, 1);
 
   let swap = false;
   for (let d = 1; d < gridTotalCells; d *= 2) {
-    prefixSumComputeShader.setStorageBuffer(
-      "gridOffsetsIn",
-      swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
+    sumBucketsComputeShader.setStorageBuffer(
+      "gridSumsIn",
+      swap ? gridSumsBuffer2 : gridSumsBuffer
     );
-    prefixSumComputeShader.setStorageBuffer(
-      "gridOffsetsOut",
-      swap ? gridOffsetsBuffer : gridOffsetsBuffer2
+    sumBucketsComputeShader.setStorageBuffer(
+      "gridSumsOut",
+      swap ? gridSumsBuffer : gridSumsBuffer2
     );
 
     params.updateUInt("divider", d);
     params.update();
-    prefixSumComputeShader.dispatch(Math.ceil(gridTotalCells / 256), 1, 1);
+    sumBucketsComputeShader.dispatch(Math.ceil(blocks / 256), 1, 1);
     swap = !swap;
   }
 
-  rearrangeBoidsComputeShader.setStorageBuffer(
-    "gridOffsets",
-    swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
+  addSumsComputeShader.setStorageBuffer(
+    "gridSumsIn",
+    swap ? gridSumsBuffer2 : gridSumsBuffer
   );
-  boidComputeShader.setStorageBuffer(
-    "gridOffsets",
-    swap ? gridOffsetsBuffer2 : gridOffsetsBuffer
-  );
+  addSumsComputeShader.dispatch(blocks, 1, 1);
   rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / 256), 1, 1);
 
   params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);

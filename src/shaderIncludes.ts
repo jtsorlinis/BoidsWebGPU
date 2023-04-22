@@ -20,6 +20,7 @@ struct Params {
   gridTotalCells : u32,
   divider: u32,
   rngSeed: u32,
+  blocks: u32,
 };
 
 struct Boid {
