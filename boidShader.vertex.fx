@@ -1,17 +1,17 @@
-attribute vec2 position;
-attribute vec2 boidPos;
-attribute vec2 boidVel;
+#include<sceneUboDeclaration>
+#include<boidInclude>
 
-uniform mat4 worldViewProjection;
-varying vec2 vel;
+var<storage,read> boids: array<Boid>;
+var<uniform> boidVertices : array<vec3<f32>,3>;
 
-void main() {
-    float angle = -atan(boidVel.x, boidVel.y);
-    vec2 pos = vec2(
-        position.x * cos(angle) - position.y * sin(angle),
-        position.x * sin(angle) + position.y * cos(angle)
+@vertex
+fn main(input : VertexInputs) -> FragmentInputs {
+    let boid = boids[vertexInputs.instanceIndex];
+    let angle = -atan2(boid.vel.x, boid.vel.y);
+    var pos = boidVertices[vertexInputs.vertexIndex].xy * 0.1;
+    var rotated = vec2(
+        pos.x * cos(angle) - pos.y * sin(angle),
+        pos.x * sin(angle) + pos.y * cos(angle)
     );
-    pos *= 0.1;
-    gl_Position = worldViewProjection * vec4(pos + boidPos, 0.0, 1.0);;
-    vel = boidVel;
-}
+    vertexOutputs.position = scene.viewProjection * vec4(rotated + boid.pos, 0.0, 1.0);
+}    
