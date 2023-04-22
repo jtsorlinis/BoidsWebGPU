@@ -160,10 +160,11 @@ const setup = () => {
 
   // Load texture and materials
   const boidMat = new ShaderMaterial("boidMat", scene, "./boidShader", {
-    uniformBuffers: ["Scene"],
-    storageBuffers: ["boids", "boidVertices"],
+    uniformBuffers: ["Scene", "boidVertices"],
+    storageBuffers: ["boids"],
     shaderLanguage: ShaderLanguage.WGSL,
   });
+  boidMat.setStorageBuffer("boids", boidsComputeBuffer);
 
   // Create boid mesh
   var boidMesh = new Mesh("custom");
@@ -173,10 +174,9 @@ const setup = () => {
   boidMesh.forcedInstanceCount = numBoids;
 
   var positions = [0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0];
-  const boidVerticesBuffer = new StorageBuffer(engine, positions.length * 4);
-  boidVerticesBuffer.update(positions);
-  boidMat.setStorageBuffer("boids", boidsComputeBuffer);
-  boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
+  const boidVerticesBuffer = new UniformBuffer(engine, positions);
+  boidVerticesBuffer.update();
+  boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
 
   boidMesh.material = boidMat;
   boidMesh.buildBoundingInfo(
