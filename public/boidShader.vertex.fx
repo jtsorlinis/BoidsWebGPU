@@ -6,9 +6,11 @@ var<uniform> boidVertices : array<vec3<f32>,3>;
 
 @vertex
 fn main(input : VertexInputs) -> FragmentInputs {
-    let boid = boids[vertexInputs.instanceIndex];
+    let instanceId = vertexInputs.vertexIndex / 3;
+    let vertexId = vertexInputs.vertexIndex - (instanceId * 3);
+    let boid = boids[instanceId];
     let angle = -atan2(boid.vel.x, boid.vel.y);
-    var pos = boidVertices[vertexInputs.vertexIndex].xy * 0.1;
+    var pos = boidVertices[vertexId].xy * 0.1;
     var rotated = vec2(
         pos.x * cos(angle) - pos.y * sin(angle),
         pos.x * sin(angle) + pos.y * cos(angle)

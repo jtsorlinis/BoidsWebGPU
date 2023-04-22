@@ -169,9 +169,8 @@ const setup = () => {
   // Create boid mesh
   var boidMesh = new Mesh("custom");
   boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
-  boidMesh.setIndices([0, 1, 2]);
-  boidMesh.convertToUnIndexedMesh();
-  boidMesh.forcedInstanceCount = numBoids;
+  boidMesh._unIndexed = true;
+  boidMesh.subMeshes[0].verticesCount = numBoids * 3;
 
   var positions = [0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0];
   const boidVerticesBuffer = new UniformBuffer(engine, positions);
