@@ -167,7 +167,7 @@ const setup = () => {
   boidMat.setStorageBuffer("boids", boidsComputeBuffer);
 
   // Create boid mesh
-  var boidMesh = new Mesh("custom");
+  var boidMesh = new Mesh("custom", scene);
   boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
   boidMesh._unIndexed = true;
   boidMesh.subMeshes[0].verticesCount = numBoids * 3;
