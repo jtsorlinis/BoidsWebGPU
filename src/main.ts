@@ -1,7 +1,6 @@
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "./style.css";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { Scalar, ShaderLanguage, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
@@ -159,50 +158,27 @@ const setup = () => {
   const boidsComputeBuffer2 = new StorageBuffer(engine, boids.byteLength);
   boidsComputeBuffer.update(boids);
 
-  const boidPositionBuffer = new VertexBuffer(
-    engine,
-    boidsComputeBuffer.getBuffer(),
-    "boidPos",
-    false,
-    false,
-    stride,
-    true,
-    0,
-    2
-  );
-
-  const boidVelocityBuffer = new VertexBuffer(
-    engine,
-    boidsComputeBuffer.getBuffer(),
-    "boidVel",
-    false,
-    false,
-    stride,
-    true,
-    2,
-    2
-  );
-
   // Load texture and materials
   const boidMat = new ShaderMaterial("boidMat", scene, "./boidShader", {
-    attributes: ["position", "boidPos", "boidVel"],
     uniformBuffers: ["Scene"],
+    storageBuffers: ["boids", "boidVertices"],
     shaderLanguage: ShaderLanguage.WGSL,
   });
 
   // Create boid mesh
-  var boidMesh = new Mesh("custom", scene);
-  var positions = [0, 0.5, 0, -0.4, -0.5, 0, 0.4, -0.5, 0];
-  var indices = [0, 1, 2];
-  var vertexData = new VertexData();
-  vertexData.positions = positions;
-  vertexData.indices = indices;
-  vertexData.applyToMesh(boidMesh);
+  var boidMesh = new Mesh("custom");
+  boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
+  boidMesh.setIndices([0, 1, 2]);
+  boidMesh.convertToUnIndexedMesh();
+  boidMesh.forcedInstanceCount = numBoids;
+
+  var positions = [0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0];
+  const boidVerticesBuffer = new StorageBuffer(engine, positions.length * 4);
+  boidVerticesBuffer.update(positions);
+  boidMat.setStorageBuffer("boids", boidsComputeBuffer);
+  boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
 
   boidMesh.material = boidMat;
-  boidMesh.forcedInstanceCount = numBoids;
-  boidMesh.setVerticesBuffer(boidPositionBuffer, false);
-  boidMesh.setVerticesBuffer(boidVelocityBuffer, false);
   boidMesh.buildBoundingInfo(
     new Vector3(-xBound, -yBound, 0),
     new Vector3(xBound, yBound, 0)

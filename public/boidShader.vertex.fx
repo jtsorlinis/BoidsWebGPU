@@ -1,16 +1,17 @@
 #include<sceneUboDeclaration>
+#include<boidInclude>
 
-attribute position : vec2<f32>;
-attribute boidPos : vec2<f32>;
-attribute boidVel : vec2<f32>;
+var<storage,read> boids: array<Boid>;
+var<storage,read> boidVertices : array<vec3<f32>>;
 
 @vertex
 fn main(input : VertexInputs) -> FragmentInputs {
-    let angle = -atan2(input.boidVel.x, input.boidVel.y);
-    var pos = vec2(
-        input.position.x * cos(angle) - input.position.y * sin(angle),
-        input.position.x * sin(angle) + input.position.y * cos(angle)
+    let boid = boids[vertexInputs.instanceIndex];
+    let angle = -atan2(boid.vel.x, boid.vel.y);
+    var pos = boidVertices[vertexInputs.vertexIndex].xy * 0.1;
+    var rotated = vec2(
+        pos.x * cos(angle) - pos.y * sin(angle),
+        pos.x * sin(angle) + pos.y * cos(angle)
     );
-    pos *= 0.1;
-    vertexOutputs.position = scene.viewProjection * vec4(pos + input.boidPos, 0.0, 1.0);
+    vertexOutputs.position = scene.viewProjection * vec4(rotated + boid.pos, 0.0, 1.0);
 }    
