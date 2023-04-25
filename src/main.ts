@@ -295,8 +295,8 @@ canvas.addEventListener("wheel", (e) => {
 
 canvas.addEventListener("pointermove", (e) => {
   if (e.buttons) {
-    camera.position.x -= e.movementX * 0.0025 * orthoSize;
-    camera.position.y += e.movementY * 0.0025 * orthoSize;
+    camera.position.x -= e.movementX * 0.002 * orthoSize;
+    camera.position.y += e.movementY * 0.002 * orthoSize;
   }
 });
 
