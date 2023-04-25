@@ -226,9 +226,9 @@ const setup = () => {
   params.updateFloat("turnSpeed", maxSpeed * 3);
   params.updateFloat("visualRange", visualRange);
   params.updateFloat("minDistance", 0.15);
-  params.updateFloat("cohesionFactor", 1);
+  params.updateFloat("cohesionFactor", 2);
   params.updateFloat("alignmentFactor", 5);
-  params.updateFloat("separationFactor", 30);
+  params.updateFloat("separationFactor", 1);
   params.updateUInt("gridDimX", gridDimX);
   params.updateUInt("gridDimY", gridDimY);
   params.updateFloat("gridCellSize", visualRange);
