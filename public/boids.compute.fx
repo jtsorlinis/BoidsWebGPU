@@ -76,6 +76,13 @@ fn keepInBounds(boid: ptr<function, Boid>) {
   }
 }
 
+fn avoidPredators(boid: ptr<function, Boid>) {
+  if(distance((*boid).pos, params.mousePos) < params.zoom) {
+      let force = (1 - distance((*boid).pos, params.mousePos) / params.zoom) * 10;
+      (*boid).vel += normalize((*boid).pos - params.mousePos) * pow(force, 2) * params.dt;
+  }
+}
+
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   var index : u32 = GlobalInvocationID.x;
@@ -85,6 +92,7 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   mergedBehaviours(&boid);
   limitSpeed(&boid);
   keepInBounds(&boid);
+  avoidPredators(&boid);
   
   boid.pos += boid.vel * params.dt;
 

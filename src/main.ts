@@ -6,7 +6,7 @@ import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import "./shaderIncludes";
@@ -139,6 +139,7 @@ let gridSumsBuffer: StorageBuffer;
 let gridSumsBuffer2: StorageBuffer;
 let gridTotalCells: number;
 let blocks: number;
+let boidMat: ShaderMaterial;
 
 const params = new UniformBuffer(engine, undefined, false, "params");
 params.addUniform("numBoids", 1);
@@ -160,6 +161,8 @@ params.addUniform("gridTotalCells", 1);
 params.addUniform("divider", 1);
 params.addUniform("rngSeed", 1);
 params.addUniform("blocks", 1);
+params.addUniform("zoom", 1);
+params.addFloat2("mousePos", 0, 0);
 
 const setup = () => {
   boidText.innerHTML = `Boids: ${numBoids}`;
@@ -191,7 +194,7 @@ const setup = () => {
   boidsComputeBuffer.update(boids);
 
   // Load texture and materials
-  const boidMat = new ShaderMaterial("boidMat", scene, "./boidShader", {
+  boidMat = new ShaderMaterial("boidMat", scene, "./boidShader", {
     uniformBuffers: ["Scene", "boidVertices"],
     storageBuffers: ["boids"],
     shaderLanguage: ShaderLanguage.WGSL,
@@ -294,6 +297,15 @@ canvas.addEventListener("wheel", (e) => {
 });
 
 canvas.addEventListener("pointermove", (e) => {
+  const mouseX =
+    (e.x / canvas.width - 0.5) * orthoSize * 2 * aspectRatio +
+    camera.position.x;
+  const mouseY =
+    -(e.y / canvas.height - 0.5) * orthoSize * 2 + camera.position.y;
+  boidMat.setVector2("mousePos", new Vector2(mouseX, mouseY));
+  params.updateFloat2("mousePos", mouseX, mouseY);
+  params.update();
+
   if (e.buttons) {
     camera.position.x -= e.movementX * 0.002 * orthoSize;
     camera.position.y += e.movementY * 0.002 * orthoSize;
@@ -352,6 +364,8 @@ engine.runRenderLoop(async () => {
   rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
   params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
+  params.updateFloat("zoom", orthoSize / 4);
+  boidMat.setFloat("zoom", orthoSize / 4);
   params.update();
   boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
   scene.render();
