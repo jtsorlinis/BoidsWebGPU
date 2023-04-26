@@ -77,9 +77,12 @@ fn keepInBounds(boid: ptr<function, Boid>) {
 }
 
 fn avoidPredators(boid: ptr<function, Boid>) {
-  if(distance((*boid).pos, params.mousePos) < params.zoom) {
-      let force = (1 - distance((*boid).pos, params.mousePos) / params.zoom) * 10;
-      (*boid).vel += normalize((*boid).pos - params.mousePos) * pow(force, 2) * params.dt;
+  if(distance((*boid).pos, params.mousePos) < params.zoom
+      && abs((*boid).pos.y) < params.yBound
+      && abs((*boid).pos.x) < params.xBound) {
+      let dist = max(params.minDistance, distance((*boid).pos, params.mousePos) / params.zoom);
+      let force = normalize((*boid).pos - params.mousePos) / pow(dist,2);
+      (*boid).vel += force * params.dt;
   }
 }
 

@@ -17,6 +17,6 @@ fn main(input : VertexInputs) -> FragmentInputs {
         pos.x * cos(angle) - pos.y * sin(angle),
         pos.x * sin(angle) + pos.y * cos(angle)
     );
+    vertexOutputs.wPos = boid.pos;
     vertexOutputs.position = scene.viewProjection * vec4(rotated + boid.pos, 0.0, 1.0);
-    vertexOutputs.wPos = rotated + boid.pos;
 }    
