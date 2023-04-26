@@ -34,7 +34,7 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
       var distance = distance((*boid).pos, other.pos);
       if (distance > 0.0 && distance < params.visualRange) {
         if(distance < params.minDistance) {
-          close += (*boid).pos - other.pos;
+          close += normalize((*boid).pos - other.pos) / distance;
         }
         center += other.pos;
         avgVel += other.vel;
