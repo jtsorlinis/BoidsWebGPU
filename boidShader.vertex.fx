@@ -4,6 +4,8 @@
 var<storage,read> boids: array<Boid>;
 var<uniform> boidVertices : array<vec3<f32>,3>;
 
+varying wPos : vec2<f32>;
+
 @vertex
 fn main(input : VertexInputs) -> FragmentInputs {
     let instanceId = vertexInputs.vertexIndex / 3;
@@ -15,5 +17,6 @@ fn main(input : VertexInputs) -> FragmentInputs {
         pos.x * cos(angle) - pos.y * sin(angle),
         pos.x * sin(angle) + pos.y * cos(angle)
     );
+    vertexOutputs.wPos = boid.pos;
     vertexOutputs.position = scene.viewProjection * vec4(rotated + boid.pos, 0.0, 1.0);
 }    
