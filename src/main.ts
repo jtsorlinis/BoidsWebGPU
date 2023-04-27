@@ -291,14 +291,14 @@ const setup = () => {
 
 setup();
 
-canvas.addEventListener("wheel", (e) => {
+canvas.onwheel = (e) => {
   const zoomDelta = e.deltaY * orthoSize * 0.001;
   if (targetZoom + zoomDelta > 1) {
     targetZoom += zoomDelta;
   }
-});
+};
 
-canvas.addEventListener("pointermove", (e) => {
+canvas.onpointermove = (e) => {
   const mouseX =
     (e.x / canvas.width - 0.5) * orthoSize * 2 * aspectRatio +
     camera.position.x;
@@ -312,12 +312,22 @@ canvas.addEventListener("pointermove", (e) => {
     camera.position.x -= e.movementX * 0.002 * orthoSize;
     camera.position.y += e.movementY * 0.002 * orthoSize;
   }
-});
+};
 
 boidSlider.oninput = () => {
   numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
   scene.dispose();
   setup();
+};
+
+let debounce: number;
+window.onresize = () => {
+  clearTimeout(debounce);
+  debounce = setTimeout(function () {
+    scene.dispose();
+    engine.resize();
+    setup();
+  }, 100);
 };
 
 avoidToggle.onclick = () => {
