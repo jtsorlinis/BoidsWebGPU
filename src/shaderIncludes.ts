@@ -23,6 +23,7 @@ struct Params {
   divider: u32,
   rngSeed: u32,
   blocks: u32,
+  avoidMouse: u32,
   zoom: f32,
   mousePos: vec2<f32>,
 };

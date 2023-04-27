@@ -9,10 +9,21 @@
     <div id="ui">
       <div id="boidText">Boids: 0</div>
       <div id="fpsText">FPS: 00</div>
-      <input type="range" id="boidSlider" min="5" max="24" value="1" step="0.01" />
+      <input
+        type="range"
+        id="boidSlider"
+        min="5"
+        max="24"
+        value="1"
+        step="0.01"
+      />
+      <hr />
+      <label>
+        <input type="checkbox" id="avoidToggle" />
+        Avoid Mouse
+      </label>
     </div>
-    <canvas id="renderCanvas" touch-action="none">
-    </canvas>
+    <canvas id="renderCanvas" touch-action="none"> </canvas>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

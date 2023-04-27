@@ -95,7 +95,9 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   mergedBehaviours(&boid);
   limitSpeed(&boid);
   keepInBounds(&boid);
-  avoidPredators(&boid);
+  if (params.avoidMouse > 0) {
+    avoidPredators(&boid);
+  }
   
   boid.pos += boid.vel * params.dt;
 

@@ -21,6 +21,7 @@ const visualRange = 0.5;
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const boidText = document.getElementById("boidText") as HTMLElement;
 const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
+const avoidToggle = document.getElementById("avoidToggle") as HTMLInputElement;
 
 const fpsText = document.getElementById("fpsText") as HTMLElement;
 const engine = new WebGPUEngine(canvas, {
@@ -161,6 +162,7 @@ params.addUniform("gridTotalCells", 1);
 params.addUniform("divider", 1);
 params.addUniform("rngSeed", 1);
 params.addUniform("blocks", 1);
+params.addUniform("avoidMouse", 1);
 params.addUniform("zoom", 1);
 params.addFloat2("mousePos", 0, 0);
 
@@ -318,6 +320,11 @@ boidSlider.oninput = () => {
   setup();
 };
 
+avoidToggle.onclick = () => {
+  params.updateUInt("avoidMouse", avoidToggle.checked ? 1 : 0);
+  boidMat.setUInt("avoidMouse", avoidToggle.checked ? 1 : 0);
+};
+
 const smoothZoom = () => {
   if (Math.abs(orthoSize - targetZoom) > 0.01) {
     const aspectRatio = engine.getAspectRatio(camera);
@@ -364,8 +371,8 @@ engine.runRenderLoop(async () => {
   rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
   params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
-  params.updateFloat("zoom", orthoSize / 4);
-  boidMat.setFloat("zoom", orthoSize / 4);
+  params.updateFloat("zoom", orthoSize / 3);
+  boidMat.setFloat("zoom", orthoSize / 3);
   params.update();
   boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
   scene.render();
