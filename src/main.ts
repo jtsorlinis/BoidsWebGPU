@@ -316,6 +316,9 @@ canvas.onpointermove = (e) => {
 
 boidSlider.oninput = () => {
   numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
+  if (numBoids > blockSize * 65535) {
+    numBoids = blockSize * 65535;
+  }
   scene.dispose();
   setup();
 };
