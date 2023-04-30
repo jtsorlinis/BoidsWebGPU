@@ -58,25 +58,17 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
 
 fn limitSpeed(boid: ptr<function, Boid>) {
   var speed = length((*boid).vel);
-  if (speed > params.maxSpeed) {
-    (*boid).vel = normalize((*boid).vel) * params.maxSpeed;
-  }
-  if (speed < params.minSpeed) {
-    (*boid).vel = normalize((*boid).vel) * params.minSpeed;
-  }
+  var clampedSpeed = clamp(speed, params.minSpeed, params.maxSpeed);
+  (*boid).vel *= clampedSpeed / speed;
 }
 
 fn keepInBounds(boid: ptr<function, Boid>) {
-  if ((*boid).pos.x < -params.xBound) {
-    (*boid).vel.x += params.turnSpeed * params.dt;
-  } else if ((*boid).pos.x > params.xBound) {
-    (*boid).vel.x -= params.turnSpeed * params.dt;
-  }
-  if ((*boid).pos.y > params.yBound) {
-    (*boid).vel.y -= params.turnSpeed * params.dt;
-  } else if ((*boid).pos.y < -params.yBound) {
-    (*boid).vel.y += params.turnSpeed * params.dt;
-  }
+  if (abs((*boid).pos.x) > params.xBound) {
+    (*boid).vel.x -= sign((*boid).pos.x) * params.turnSpeed * params.dt;
+  } 
+  if (abs((*boid).pos.y) > params.yBound) {
+    (*boid).vel.y -= sign((*boid).pos.y) * params.turnSpeed * params.dt;
+  } 
 }
 
 fn avoidPredators(boid: ptr<function, Boid>) {
