@@ -23,6 +23,8 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
 
   var gridXY = getGridLocation(*boid);
   var cell = getGridID(gridXY);
+  var visualRangeSq = params.visualRangeSq;
+  var minDistanceSq = params.minDistanceSq;
 
   // Loop around cell
   for(var y = cell - params.gridDimX; y <= cell + params.gridDimX; y += params.gridDimX) {
@@ -31,10 +33,11 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
 
     for (var i = start; i < end; i += 1) {
       var other = boidsIn[i];
-      var distance = distance((*boid).pos, other.pos);
-      if (distance > 0.0 && distance < params.visualRange) {
-        if(distance < params.minDistance) {
-          close += normalize((*boid).pos - other.pos) / distance;
+      var diff = (*boid).pos - other.pos;
+      var distSq = dot(diff, diff);
+      if (distSq > 0 && distSq < visualRangeSq) {
+        if(distSq < minDistanceSq) {
+          close += diff / distSq;
         }
         center += other.pos;
         avgVel += other.vel;
@@ -80,7 +83,7 @@ fn avoidPredators(boid: ptr<function, Boid>) {
   if(distance((*boid).pos, params.mousePos) < params.zoom
       && abs((*boid).pos.y) < params.yBound
       && abs((*boid).pos.x) < params.xBound) {
-      let dist = max(params.minDistance, distance((*boid).pos, params.mousePos) / params.zoom);
+      let dist = max(params.minDistanceSq, distance((*boid).pos, params.mousePos) / params.zoom);
       let force = normalize((*boid).pos - params.mousePos) / pow(dist,2);
       (*boid).vel += force * params.dt;
   }
