@@ -31,6 +31,11 @@ const engine = new WebGPUEngine(canvas, {
 });
 await engine.initAsync();
 
+if (!engine.getCaps()?.supportComputeShaders) {
+  document.body.innerHTML =
+    "WebGPU is not supported on this browser, please update to the latest version of Chrome";
+}
+
 let scene: Scene;
 let targetZoom: number;
 let orthoSize: number;
