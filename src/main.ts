@@ -34,9 +34,9 @@ if (!engine.getCaps()?.supportComputeShaders) {
     "WebGPU is not supported on this browser, please update to the latest version of Chrome";
 }
 
-const blockSize = engine.supportedLimits.maxComputeWorkgroupSizeX;
+const blockSize = engine.currentLimits.maxComputeWorkgroupSizeX;
 setupIncludes(blockSize);
-const maxBlocks = engine.supportedLimits.maxComputeWorkgroupsPerDimension;
+const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
 const boidLimit = blockSize * maxBlocks;
 boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
