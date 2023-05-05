@@ -9,9 +9,7 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
-import "./shaderIncludes";
-
-const blockSize = 512;
+import { setupIncludes } from "./shaderIncludes";
 
 let numBoids = 32;
 const edgeMargin = 0.5;
@@ -35,6 +33,12 @@ if (!engine.getCaps()?.supportComputeShaders) {
   document.body.innerHTML =
     "WebGPU is not supported on this browser, please update to the latest version of Chrome";
 }
+
+const blockSize = engine.supportedLimits.maxComputeWorkgroupSizeX;
+setupIncludes(blockSize);
+const maxBlocks = engine.supportedLimits.maxComputeWorkgroupsPerDimension;
+const boidLimit = blockSize * maxBlocks;
+boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
 let scene: Scene;
 let targetZoom: number;
@@ -322,8 +326,8 @@ canvas.onpointermove = (e) => {
 
 boidSlider.oninput = () => {
   numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
-  if (numBoids > blockSize * 65535) {
-    numBoids = blockSize * 65535;
+  if (numBoids > boidLimit) {
+    numBoids = boidLimit;
   }
   scene.dispose();
   setup();
