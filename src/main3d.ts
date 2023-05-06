@@ -55,7 +55,7 @@ export const boids3d = async () => {
   const generateBoidsComputeShader = new ComputeShader(
     "generateBoids",
     engine,
-    "./generateBoids",
+    "./3d/generateBoids",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -64,7 +64,7 @@ export const boids3d = async () => {
     }
   );
 
-  const boidComputeShader = new ComputeShader("boids", engine, "./boids", {
+  const boidComputeShader = new ComputeShader("boids", engine, "./3d/boids", {
     bindingsMapping: {
       params: { group: 0, binding: 0 },
       boids: { group: 0, binding: 1 },
@@ -76,7 +76,7 @@ export const boids3d = async () => {
   const clearGridComputeShader = new ComputeShader(
     "clearGrid",
     engine,
-    "./clearGrid",
+    "./3d/clearGrid",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -88,7 +88,7 @@ export const boids3d = async () => {
   const updateGridComputeShader = new ComputeShader(
     "updateGrid",
     engine,
-    "./updateGrid",
+    "./3d/updateGrid",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -102,7 +102,7 @@ export const boids3d = async () => {
   const prefixSumComputeShader = new ComputeShader(
     "prefixSum",
     engine,
-    "./prefixSum",
+    "./3d/prefixSum",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -116,7 +116,7 @@ export const boids3d = async () => {
   const sumBucketsComputeShader = new ComputeShader(
     "sumBuckets",
     engine,
-    "./sumBuckets",
+    "./3d/sumBuckets",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -129,7 +129,7 @@ export const boids3d = async () => {
   const addSumsComputeShader = new ComputeShader(
     "addSums",
     engine,
-    "./addSums",
+    "./3d/addSums",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -142,7 +142,7 @@ export const boids3d = async () => {
   const rearrangeBoidsComputeShader = new ComputeShader(
     "rearrangeBoids",
     engine,
-    "./rearrangeBoids",
+    "./3d/rearrangeBoids",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -221,7 +221,7 @@ export const boids3d = async () => {
     boidsComputeBuffer.update(boids);
 
     // Load texture and materials
-    boidMat = new ShaderMaterial("boidMat", scene, "./boidShader", {
+    boidMat = new ShaderMaterial("boidMat", scene, "./3d/boidShader", {
       uniformBuffers: ["Scene", "boidVertices"],
       storageBuffers: ["boids"],
       shaderLanguage: ShaderLanguage.WGSL,
