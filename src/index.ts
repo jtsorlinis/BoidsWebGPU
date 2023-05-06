@@ -1,6 +1,6 @@
 import "./style.css";
 import { boids2d } from "./main2d";
-import { boids3d } from "./main3D";
+import { boids3d } from "./main3d";
 import { WebGPUEngine } from "@babylonjs/core";
 
 let is3D = false;
