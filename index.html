@@ -4,13 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebGPU Boids</title>
-    <script type="module" crossorigin src="/BoidsWebGPU/assets/index-60e6b4ac.js"></script>
-    <link rel="stylesheet" href="/BoidsWebGPU/assets/index-6ad6311d.css">
+    <script type="module" crossorigin src="/BoidsWebGPU/assets/index-602ebedb.js"></script>
+    <link rel="stylesheet" href="/BoidsWebGPU/assets/index-59ac84d6.css">
   </head>
   <body>
     <div id="ui">
-      <div id="boidText">Boids: 0</div>
       <div id="fpsText">FPS: 00</div>
+      <hr />
+      <div id="boidText">Boids: 0</div>
       <input
         type="range"
         id="boidSlider"
@@ -20,10 +21,35 @@
         step="0.01"
       />
       <hr />
+      <span>Mode:</span>
       <label>
-        <input type="checkbox" id="avoidToggle" />
-        Avoid Mouse
+        <input
+          class="modeRadio"
+          type="radio"
+          id="radio2D"
+          name="mode"
+          value="2D"
+          checked
+        />
+        2D
       </label>
+      <label for="3D">
+        <input
+          class="modeRadio"
+          type="radio"
+          id="radio3D"
+          name="mode"
+          value="3D"
+        />
+        3D
+      </label>
+      <div id="options">
+        <hr />
+        <label>
+          <input type="checkbox" id="avoidToggle" />
+          Avoid Mouse
+        </label>
+      </div>
     </div>
     <canvas id="renderCanvas" touch-action="none"> </canvas>
     
