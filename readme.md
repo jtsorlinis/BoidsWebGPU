@@ -1,6 +1,8 @@
 # 2D/3D Boids Flocking Simulation (Babylon.js/WebGPU)
 
-See it here: https://jtsorlinis.github.io/BoidsWebGPU/
+**See it here: https://jtsorlinis.github.io/BoidsWebGPU/**
+
+---
 
 Boids simulation made with babylon.js and WebGPU, running on a compute shader this allows the simulation of millions of boids.
 
