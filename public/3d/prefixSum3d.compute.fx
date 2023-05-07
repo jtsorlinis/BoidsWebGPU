@@ -1,4 +1,4 @@
-#include<boidInclude>
+#include<boid3dInclude>
 
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read> gridOffsetsIn : array<u32>;

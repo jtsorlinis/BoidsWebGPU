@@ -39,7 +39,7 @@ export const boids3d = async () => {
   const blockSize = engine.currentLimits.maxComputeWorkgroupSizeX;
   setupIncludes(blockSize);
   const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
-  const boidLimit = (blockSize * maxBlocks) / 2;
+  const boidLimit = (blockSize * maxBlocks) / 8;
   boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
   let scene: Scene;
@@ -58,7 +58,7 @@ export const boids3d = async () => {
     }
   );
 
-  const boidComputeShader = new ComputeShader("boids", engine, "./3d/boids", {
+  const boidComputeShader = new ComputeShader("boids", engine, "./3d/boids3d", {
     bindingsMapping: {
       params: { group: 0, binding: 0 },
       boids: { group: 0, binding: 1 },
@@ -70,7 +70,7 @@ export const boids3d = async () => {
   const clearGridComputeShader = new ComputeShader(
     "clearGrid",
     engine,
-    "./3d/clearGrid",
+    "./3d/clearGrid3d",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -82,7 +82,7 @@ export const boids3d = async () => {
   const updateGridComputeShader = new ComputeShader(
     "updateGrid",
     engine,
-    "./3d/updateGrid",
+    "./3d/updateGrid3d",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -96,7 +96,7 @@ export const boids3d = async () => {
   const prefixSumComputeShader = new ComputeShader(
     "prefixSum",
     engine,
-    "./3d/prefixSum",
+    "./3d/prefixSum3d",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -110,7 +110,7 @@ export const boids3d = async () => {
   const sumBucketsComputeShader = new ComputeShader(
     "sumBuckets",
     engine,
-    "./3d/sumBuckets",
+    "./3d/sumBuckets3d",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -123,7 +123,7 @@ export const boids3d = async () => {
   const addSumsComputeShader = new ComputeShader(
     "addSums",
     engine,
-    "./3d/addSums",
+    "./3d/addSums3d",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -136,7 +136,7 @@ export const boids3d = async () => {
   const rearrangeBoidsComputeShader = new ComputeShader(
     "rearrangeBoids",
     engine,
-    "./3d/rearrangeBoids",
+    "./3d/rearrangeBoids3d",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -347,38 +347,38 @@ export const boids3d = async () => {
     const fps = engine.getFps();
     fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
 
-    // clearGridComputeShader.dispatch(blocks, 1, 1);
-    // updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    clearGridComputeShader.dispatch(blocks, 1, 1);
+    updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    // prefixSumComputeShader.dispatch(blocks, 1, 1);
+    prefixSumComputeShader.dispatch(blocks, 1, 1);
 
-    // let swap = false;
-    // for (let d = 1; d < gridTotalCells; d *= 2) {
-    //   sumBucketsComputeShader.setStorageBuffer(
-    //     "gridSumsIn",
-    //     swap ? gridSumsBuffer2 : gridSumsBuffer
-    //   );
-    //   sumBucketsComputeShader.setStorageBuffer(
-    //     "gridSumsOut",
-    //     swap ? gridSumsBuffer : gridSumsBuffer2
-    //   );
+    let swap = false;
+    for (let d = 1; d < gridTotalCells; d *= 2) {
+      sumBucketsComputeShader.setStorageBuffer(
+        "gridSumsIn",
+        swap ? gridSumsBuffer2 : gridSumsBuffer
+      );
+      sumBucketsComputeShader.setStorageBuffer(
+        "gridSumsOut",
+        swap ? gridSumsBuffer : gridSumsBuffer2
+      );
 
-    //   params.updateUInt("divider", d);
-    //   params.update();
-    //   sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
-    //   swap = !swap;
-    // }
+      params.updateUInt("divider", d);
+      params.update();
+      sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
+      swap = !swap;
+    }
 
-    // addSumsComputeShader.setStorageBuffer(
-    //   "gridSumsIn",
-    //   swap ? gridSumsBuffer2 : gridSumsBuffer
-    // );
-    // addSumsComputeShader.dispatch(blocks, 1, 1);
-    // rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    addSumsComputeShader.setStorageBuffer(
+      "gridSumsIn",
+      swap ? gridSumsBuffer2 : gridSumsBuffer
+    );
+    addSumsComputeShader.dispatch(blocks, 1, 1);
+    rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    // params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
-    // params.update();
-    // boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
+    params.update();
+    boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
     scene.render();
   });
 
