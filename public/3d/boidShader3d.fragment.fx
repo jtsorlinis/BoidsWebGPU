@@ -3,7 +3,7 @@ uniform cameraPosition : vec3<f32>;
 varying worldPos : vec3<f32>;
 varying norm : vec3<f32>;
 
-const boidColour : vec3<f32> = vec3<f32>(1, 0, 0);
+const boidColour : vec3<f32> = vec3<f32>(1, 1, 1);
 const ambientStrength : f32 = 0.2;
 const specularStrength : f32 = 1.0;
 const lightColour : vec3<f32> = vec3<f32>(1.0, 1.0, 1.0);
