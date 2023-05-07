@@ -184,7 +184,7 @@ export const boids3d = async () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
     scene = new Scene(engine);
     camera = new UniversalCamera("camera1", new Vector3(0, 0, -5), scene);
-    camera.speed = 0.5;
+    camera.speed = 0.3;
     camera.keysLeft = [65];
     camera.keysRight = [68];
     camera.keysUp = [87];
@@ -332,6 +332,14 @@ export const boids3d = async () => {
     }
     scene.dispose();
     setup();
+  };
+
+  canvas.onpointerdown = () => {
+    canvas.requestPointerLock();
+  };
+
+  canvas.onpointerup = () => {
+    document.exitPointerLock();
   };
 
   let debounce: number;
