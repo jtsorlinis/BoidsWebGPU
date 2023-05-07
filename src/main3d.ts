@@ -39,7 +39,7 @@ export const boids3d = async () => {
   const blockSize = engine.currentLimits.maxComputeWorkgroupSizeX;
   setupIncludes(blockSize);
   const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
-  const boidLimit = (blockSize * maxBlocks) / 8;
+  const boidLimit = (blockSize * maxBlocks) / 4;
   boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
   let scene: Scene;
