@@ -188,6 +188,7 @@ export const boids3d = async () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
     scene = new Scene(engine);
     camera = new UniversalCamera("camera1", new Vector3(0, 0, -5), scene);
+    camera.minZ = 0.1;
     camera.speed = 0.3;
     camera.keysLeft = [65];
     camera.keysRight = [68];
