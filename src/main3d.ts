@@ -1,12 +1,11 @@
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "./style.css";
-import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Scalar, ShaderLanguage, WebGPUEngine } from "@babylonjs/core";
+import { ShaderLanguage, UniversalCamera, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
-import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { setupIncludes } from "./shaderIncludes";
@@ -40,14 +39,12 @@ export const boids3d = async () => {
   const blockSize = engine.currentLimits.maxComputeWorkgroupSizeX;
   setupIncludes(blockSize);
   const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
-  const boidLimit = blockSize * maxBlocks;
+  const boidLimit = (blockSize * maxBlocks) / 2;
   boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
   let scene: Scene;
-  let targetZoom: number;
-  let orthoSize: number;
-  let aspectRatio: number;
-  let camera: FreeCamera;
+  let spaceBounds: number;
+  let camera: UniversalCamera;
 
   const generateBoidsComputeShader = new ComputeShader(
     "generateBoids",
@@ -164,6 +161,7 @@ export const boids3d = async () => {
   params.addUniform("numBoids", 1);
   params.addUniform("xBound", 1);
   params.addUniform("yBound", 1);
+  params.addUniform("zBound", 1);
   params.addUniform("maxSpeed", 1);
   params.addUniform("minSpeed", 1);
   params.addUniform("turnSpeed", 1);
@@ -175,37 +173,39 @@ export const boids3d = async () => {
   params.addUniform("dt", 1);
   params.addUniform("gridDimX", 1);
   params.addUniform("gridDimY", 1);
+  params.addUniform("gridDimZ", 1);
   params.addUniform("gridCellSize", 1);
   params.addUniform("gridTotalCells", 1);
   params.addUniform("divider", 1);
   params.addUniform("rngSeed", 1);
   params.addUniform("blocks", 1);
-  params.addUniform("avoidMouse", 1);
-  params.addUniform("zoom", 1);
-  params.addFloat2("mousePos", 0, 0);
 
   const setup = () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
     scene = new Scene(engine);
-    camera = new FreeCamera("camera1", new Vector3(0, 0, -5), scene);
-    camera.mode = 1;
-    aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
-    orthoSize = Math.max(2, Math.sqrt(numBoids) / 10 + edgeMargin);
-    targetZoom = orthoSize;
-    camera.orthoBottom = -orthoSize;
-    camera.orthoTop = orthoSize;
-    camera.orthoLeft = -orthoSize * aspectRatio;
-    camera.orthoRight = orthoSize * aspectRatio;
+    camera = new UniversalCamera("camera1", new Vector3(0, 0, -5), scene);
+    camera.speed = 0.5;
+    camera.keysLeft = [65];
+    camera.keysRight = [68];
+    camera.keysUp = [87];
+    camera.keysDown = [83];
+    camera.keysUpward = [69];
+    camera.keysDownward = [81];
+    camera.attachControl();
+    spaceBounds = Math.max(1, Math.pow(numBoids, 1 / 3) / 7.5 + edgeMargin);
+    camera.position.z = -spaceBounds * 4.5;
 
-    const xBound = orthoSize * aspectRatio - edgeMargin;
-    const yBound = orthoSize - edgeMargin;
+    const xBound = 2 * spaceBounds - edgeMargin;
+    const yBound = spaceBounds - edgeMargin;
+    const zBound = 2 * spaceBounds - edgeMargin;
 
-    const gridDimX = Math.floor((xBound * 2) / visualRange) + 30;
-    const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
-    gridTotalCells = gridDimX * gridDimY;
+    const gridDimX = Math.floor((xBound * 2) / visualRange) + 20;
+    const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
+    const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
+    gridTotalCells = gridDimX * gridDimY * gridDimZ;
     blocks = Math.ceil(gridTotalCells / blockSize);
 
-    const stride = 4;
+    const stride = 8;
     const boids = new Float32Array(numBoids * stride);
 
     // Boids
@@ -218,7 +218,7 @@ export const boids3d = async () => {
     boidsComputeBuffer.update(boids);
 
     // Load texture and materials
-    boidMat = new ShaderMaterial("boidMat", scene, "./3d/boidShader", {
+    boidMat = new ShaderMaterial("boidMat", scene, "./3d/boidShader3d", {
       uniformBuffers: ["Scene", "boidVertices"],
       storageBuffers: ["boids"],
       shaderLanguage: ShaderLanguage.WGSL,
@@ -229,9 +229,12 @@ export const boids3d = async () => {
     const boidMesh = new Mesh("custom", scene);
     boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
     boidMesh.isUnIndexed = true;
-    boidMesh.subMeshes[0].verticesCount = numBoids * 3;
+    boidMesh.subMeshes[0].verticesCount = numBoids * 6;
 
-    const positions = [0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0];
+    const positions = [
+      0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0, -0.4,
+      -0.5, 0, 0, 0, 0.5, 0, 0,
+    ];
     const boidVerticesBuffer = new UniformBuffer(engine, positions);
     boidVerticesBuffer.update();
     boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
@@ -245,6 +248,7 @@ export const boids3d = async () => {
     params.updateUInt("numBoids", numBoids);
     params.updateFloat("xBound", xBound);
     params.updateFloat("yBound", yBound);
+    params.updateFloat("zBound", zBound);
     params.updateFloat("maxSpeed", maxSpeed);
     params.updateFloat("minSpeed", maxSpeed * 0.75);
     params.updateFloat("turnSpeed", maxSpeed * 3);
@@ -255,6 +259,7 @@ export const boids3d = async () => {
     params.updateFloat("separationFactor", separationFactor);
     params.updateUInt("gridDimX", gridDimX);
     params.updateUInt("gridDimY", gridDimY);
+    params.updateUInt("gridDimZ", gridDimZ);
     params.updateFloat("gridCellSize", visualRange);
     params.updateUInt("gridTotalCells", gridTotalCells);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
@@ -319,29 +324,6 @@ export const boids3d = async () => {
 
   setup();
 
-  canvas.onwheel = (e) => {
-    const zoomDelta = e.deltaY * orthoSize * 0.001;
-    if (targetZoom + zoomDelta > 1) {
-      targetZoom += zoomDelta;
-    }
-  };
-
-  canvas.onpointermove = (e) => {
-    const mouseX =
-      (e.x / canvas.width - 0.5) * orthoSize * 2 * aspectRatio +
-      camera.position.x;
-    const mouseY =
-      -(e.y / canvas.height - 0.5) * orthoSize * 2 + camera.position.y;
-    boidMat.setVector2("mousePos", new Vector2(mouseX, mouseY));
-    params.updateFloat2("mousePos", mouseX, mouseY);
-    params.update();
-
-    if (e.buttons) {
-      camera.position.x -= e.movementX * 0.002 * orthoSize;
-      camera.position.y += e.movementY * 0.002 * orthoSize;
-    }
-  };
-
   boidSlider.oninput = () => {
     numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
     if (numBoids > boidLimit) {
@@ -361,56 +343,42 @@ export const boids3d = async () => {
     }, 100);
   };
 
-  const smoothZoom = () => {
-    if (Math.abs(orthoSize - targetZoom) > 0.01) {
-      const aspectRatio = engine.getAspectRatio(camera);
-      orthoSize = Scalar.Lerp(orthoSize, targetZoom, 0.1);
-      camera.orthoBottom = -orthoSize;
-      camera.orthoTop = orthoSize;
-      camera.orthoLeft = -orthoSize * aspectRatio;
-      camera.orthoRight = orthoSize * aspectRatio;
-    }
-  };
-
   engine.runRenderLoop(async () => {
     const fps = engine.getFps();
     fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
-    smoothZoom();
 
-    clearGridComputeShader.dispatch(blocks, 1, 1);
-    updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    // clearGridComputeShader.dispatch(blocks, 1, 1);
+    // updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    prefixSumComputeShader.dispatch(blocks, 1, 1);
+    // prefixSumComputeShader.dispatch(blocks, 1, 1);
 
-    let swap = false;
-    for (let d = 1; d < gridTotalCells; d *= 2) {
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsIn",
-        swap ? gridSumsBuffer2 : gridSumsBuffer
-      );
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsOut",
-        swap ? gridSumsBuffer : gridSumsBuffer2
-      );
+    // let swap = false;
+    // for (let d = 1; d < gridTotalCells; d *= 2) {
+    //   sumBucketsComputeShader.setStorageBuffer(
+    //     "gridSumsIn",
+    //     swap ? gridSumsBuffer2 : gridSumsBuffer
+    //   );
+    //   sumBucketsComputeShader.setStorageBuffer(
+    //     "gridSumsOut",
+    //     swap ? gridSumsBuffer : gridSumsBuffer2
+    //   );
 
-      params.updateUInt("divider", d);
-      params.update();
-      sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
-      swap = !swap;
-    }
+    //   params.updateUInt("divider", d);
+    //   params.update();
+    //   sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
+    //   swap = !swap;
+    // }
 
-    addSumsComputeShader.setStorageBuffer(
-      "gridSumsIn",
-      swap ? gridSumsBuffer2 : gridSumsBuffer
-    );
-    addSumsComputeShader.dispatch(blocks, 1, 1);
-    rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    // addSumsComputeShader.setStorageBuffer(
+    //   "gridSumsIn",
+    //   swap ? gridSumsBuffer2 : gridSumsBuffer
+    // );
+    // addSumsComputeShader.dispatch(blocks, 1, 1);
+    // rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
-    params.updateFloat("zoom", orthoSize / 3);
-    boidMat.setFloat("zoom", orthoSize / 3);
-    params.update();
-    boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    // params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
+    // params.update();
+    // boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
     scene.render();
   });
 
