@@ -7,8 +7,9 @@
   </head>
   <body>
     <div id="ui">
-      <div id="boidText">Boids: 0</div>
       <div id="fpsText">FPS: 00</div>
+      <hr />
+      <div id="boidText">Boids: 0</div>
       <input
         type="range"
         id="boidSlider"
@@ -17,7 +18,29 @@
         value="1"
         step="0.01"
       />
-      <button id="switchButton"></button>
+      <hr />
+      <span>Mode:</span>
+      <label>
+        <input
+          class="modeRadio"
+          type="radio"
+          id="radio2D"
+          name="mode"
+          value="2D"
+          checked
+        />
+        2D
+      </label>
+      <label for="3D">
+        <input
+          class="modeRadio"
+          type="radio"
+          id="radio3D"
+          name="mode"
+          value="3D"
+        />
+        3D
+      </label>
       <div id="options">
         <hr />
         <label>
