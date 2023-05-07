@@ -215,7 +215,7 @@ export const boids3d = async () => {
 
     // Load texture and materials
     boidMat = new ShaderMaterial("boidMat", scene, "./3d/boidShader3d", {
-      uniformBuffers: ["Scene", "boidVertices"],
+      uniformBuffers: ["Scene", "boidVertices", "boidNormals"],
       storageBuffers: ["boids"],
       shaderLanguage: ShaderLanguage.WGSL,
     });
@@ -234,6 +234,11 @@ export const boids3d = async () => {
     const boidVerticesBuffer = new UniformBuffer(engine, positions);
     boidVerticesBuffer.update();
     boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
+    const normals = [0, 0, -1, 0, 0, 0, 1, 0];
+    const boidNormalsBuffer = new UniformBuffer(engine, normals);
+    boidNormalsBuffer.update();
+    boidMat.setUniformBuffer("boidNormals", boidNormalsBuffer);
+    boidMat.setVector3("cameraPosition", camera.position);
 
     boidMesh.material = boidMat;
     boidMesh.buildBoundingInfo(
