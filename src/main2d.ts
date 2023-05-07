@@ -155,6 +155,8 @@ export const boids2d = async () => {
     }
   );
 
+  let boidsComputeBuffer: StorageBuffer;
+  let boidsComputeBuffer2: StorageBuffer;
   let gridBuffer: StorageBuffer;
   let gridOffsetsBuffer: StorageBuffer;
   let gridOffsetsBuffer2: StorageBuffer;
@@ -163,6 +165,7 @@ export const boids2d = async () => {
   let gridTotalCells: number;
   let blocks: number;
   let boidMat: ShaderMaterial;
+  let boidVerticesBuffer: UniformBuffer;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
   params.addUniform("numBoids", 1);
@@ -213,8 +216,8 @@ export const boids2d = async () => {
     const boids = new Float32Array(numBoids * stride);
 
     // Boids
-    const boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength);
-    const boidsComputeBuffer2 = new StorageBuffer(engine, boids.byteLength);
+    boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength);
+    boidsComputeBuffer2 = new StorageBuffer(engine, boids.byteLength);
     boidsComputeBuffer.update(boids);
 
     // Load texture and materials
@@ -232,7 +235,7 @@ export const boids2d = async () => {
     boidMesh.subMeshes[0].verticesCount = numBoids * 3;
 
     const positions = [0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0];
-    const boidVerticesBuffer = new UniformBuffer(engine, positions);
+    boidVerticesBuffer = new UniformBuffer(engine, positions);
     boidVerticesBuffer.update();
     boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
 
@@ -348,6 +351,14 @@ export const boids2d = async () => {
       numBoids = boidLimit;
     }
     scene.dispose();
+    boidsComputeBuffer.dispose();
+    boidsComputeBuffer2.dispose();
+    gridBuffer.dispose();
+    gridOffsetsBuffer.dispose();
+    gridOffsetsBuffer2.dispose();
+    gridSumsBuffer.dispose();
+    gridSumsBuffer2.dispose();
+    boidVerticesBuffer.dispose();
     setup();
   };
 
@@ -355,9 +366,12 @@ export const boids2d = async () => {
   window.onresize = () => {
     clearTimeout(debounce);
     debounce = setTimeout(function () {
-      scene.dispose();
       engine.resize();
-      setup();
+      aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
+      camera.orthoBottom = -orthoSize;
+      camera.orthoTop = orthoSize;
+      camera.orthoLeft = -orthoSize * aspectRatio;
+      camera.orthoRight = orthoSize * aspectRatio;
     }, 100);
   };
 
