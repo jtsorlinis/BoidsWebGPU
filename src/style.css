@@ -25,3 +25,26 @@ body {
   font-family: "Arial";
   padding: 5px;
 }
+
+.modeRadio {
+  margin: 0;
+}
+
+#sourceButton {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: white;
+  width: 40px;
+  height: 40px;
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  border-radius: 100%;
+  transition: 0.2s;
+}
+
+#sourceButton:hover {
+  background-color: grey;
+}
