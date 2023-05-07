@@ -24,9 +24,6 @@ export const boids3d = async () => {
   const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
   const boidText = document.getElementById("boidText") as HTMLElement;
   const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
-  const avoidToggle = document.getElementById(
-    "avoidToggle"
-  ) as HTMLInputElement;
 
   const fpsText = document.getElementById("fpsText") as HTMLElement;
   const engine = new WebGPUEngine(canvas, {
@@ -55,7 +52,7 @@ export const boids3d = async () => {
   const generateBoidsComputeShader = new ComputeShader(
     "generateBoids",
     engine,
-    "./3d/generateBoids",
+    "./3d/generateBoids3d",
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
@@ -362,11 +359,6 @@ export const boids3d = async () => {
       engine.resize();
       setup();
     }, 100);
-  };
-
-  avoidToggle.onclick = () => {
-    params.updateUInt("avoidMouse", avoidToggle.checked ? 1 : 0);
-    boidMat.setUInt("avoidMouse", avoidToggle.checked ? 1 : 0);
   };
 
   const smoothZoom = () => {
