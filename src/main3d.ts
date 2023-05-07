@@ -209,11 +209,7 @@ export const boids3d = async () => {
     const boids = new Float32Array(numBoids * stride);
 
     // Boids
-    const boidsComputeBuffer = new StorageBuffer(
-      engine,
-      boids.byteLength,
-      8 | 2
-    );
+    const boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength);
     const boidsComputeBuffer2 = new StorageBuffer(engine, boids.byteLength);
     boidsComputeBuffer.update(boids);
 

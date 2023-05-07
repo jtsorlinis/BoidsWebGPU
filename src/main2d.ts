@@ -27,6 +27,7 @@ export const boids2d = async () => {
   const avoidToggle = document.getElementById(
     "avoidToggle"
   ) as HTMLInputElement;
+  avoidToggle.checked = false;
 
   const fpsText = document.getElementById("fpsText") as HTMLElement;
   const engine = new WebGPUEngine(canvas, {
@@ -212,11 +213,7 @@ export const boids2d = async () => {
     const boids = new Float32Array(numBoids * stride);
 
     // Boids
-    const boidsComputeBuffer = new StorageBuffer(
-      engine,
-      boids.byteLength,
-      8 | 2
-    );
+    const boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength);
     const boidsComputeBuffer2 = new StorageBuffer(engine, boids.byteLength);
     boidsComputeBuffer.update(boids);
 
