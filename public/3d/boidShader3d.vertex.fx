@@ -2,8 +2,8 @@
 #include<boid3dInclude>
 
 var<storage,read> boids: array<Boid3d>;
-var<uniform> boidVertices : array<vec3<f32>, 6>;
-var<uniform> boidNormals : array<vec3<f32>, 2>;
+var<uniform> boidVertices : array<vec3<f32>,6>;
+var<uniform> boidNormals : array<vec3<f32>,2>;
 
 varying worldPos : vec3<f32>;
 varying norm : vec3<f32>;
