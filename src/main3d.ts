@@ -10,6 +10,7 @@ import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { setupIncludes } from "./shaderIncludes";
 import { pyramidMesh } from "./pyramidMesh";
+import { triangleMesh } from "./triangleMesh";
 
 export const boids3d = async () => {
   let numBoids = 32;
@@ -159,8 +160,8 @@ export const boids3d = async () => {
   let gridTotalCells: number;
   let blocks: number;
   let boidMat: ShaderMaterial;
-  let boidVerticesBuffer: UniformBuffer;
-  let boidNormalsBuffer: UniformBuffer;
+  let boidVerticesBuffer: StorageBuffer;
+  let boidNormalsBuffer: StorageBuffer;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
   params.addUniform("numBoids", 1);
@@ -221,24 +222,26 @@ export const boids3d = async () => {
 
     // Load texture and materials
     boidMat = new ShaderMaterial("boidMat", scene, "./3d/boidShader3d", {
-      uniformBuffers: ["Scene", "boidVertices", "boidNormals"],
-      storageBuffers: ["boids"],
+      uniformBuffers: ["Scene"],
+      storageBuffers: ["boids", "boidVertices", "boidNormals"],
       shaderLanguage: ShaderLanguage.WGSL,
     });
     boidMat.setStorageBuffer("boids", boidsComputeBuffer);
 
     // Create boid mesh
+    const mesh = pyramidMesh;
     const boidMesh = new Mesh("custom", scene);
     boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
     boidMesh.isUnIndexed = true;
-    boidMesh.subMeshes[0].verticesCount = numBoids * 18;
+    boidMesh.subMeshes[0].verticesCount = (numBoids * mesh.vertices.length) / 4;
 
-    boidVerticesBuffer = new UniformBuffer(engine, pyramidMesh.vertices);
-    boidVerticesBuffer.update();
-    boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
-    boidNormalsBuffer = new UniformBuffer(engine, pyramidMesh.normals);
-    boidNormalsBuffer.update();
-    boidMat.setUniformBuffer("boidNormals", boidNormalsBuffer);
+    boidVerticesBuffer = new StorageBuffer(engine, mesh.vertices.length * 4);
+    boidVerticesBuffer.update(mesh.vertices);
+    boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
+    boidNormalsBuffer = new StorageBuffer(engine, mesh.normals.length * 4);
+    boidNormalsBuffer.update(mesh.normals);
+    boidMat.setStorageBuffer("boidNormals", boidNormalsBuffer);
+    boidMat.setUInt("numVertices", mesh.vertices.length / 4);
     boidMat.setVector3("cameraPosition", camera.position);
 
     boidMesh.material = boidMat;
@@ -324,13 +327,7 @@ export const boids3d = async () => {
     );
   };
 
-  setup();
-
-  boidSlider.oninput = () => {
-    numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
-    if (numBoids > boidLimit) {
-      numBoids = boidLimit;
-    }
+  const disposeAll = () => {
     scene.dispose();
     boidsComputeBuffer.dispose();
     boidsComputeBuffer2.dispose();
@@ -341,6 +338,16 @@ export const boids3d = async () => {
     gridSumsBuffer2.dispose();
     boidVerticesBuffer.dispose();
     boidNormalsBuffer.dispose();
+  };
+
+  setup();
+
+  boidSlider.oninput = () => {
+    numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
+    if (numBoids > boidLimit) {
+      numBoids = boidLimit;
+    }
+    disposeAll();
     setup();
   };
 
@@ -393,8 +400,11 @@ export const boids3d = async () => {
     addSumsComputeShader.dispatch(blocks, 1, 1);
     rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
-    params.update();
+    const dt = scene.deltaTime / 1000;
+    if (isFinite(dt) && dt > 0) {
+      params.updateFloat("dt", dt);
+      params.update();
+    }
     boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
     scene.render();
   });

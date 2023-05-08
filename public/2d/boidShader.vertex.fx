@@ -2,7 +2,7 @@
 #include<boidInclude>
 
 var<storage,read> boids: array<Boid>;
-var<uniform> boidVertices : array<vec3<f32>,3>;
+var<storage,read> boidVertices : array<vec3<f32>>;
 
 varying wPos : vec2<f32>;
 

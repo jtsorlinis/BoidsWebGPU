@@ -166,7 +166,7 @@ export const boids2d = async () => {
   let gridTotalCells: number;
   let blocks: number;
   let boidMat: ShaderMaterial;
-  let boidVerticesBuffer: UniformBuffer;
+  let boidVerticesBuffer: StorageBuffer;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
   params.addUniform("numBoids", 1);
@@ -223,8 +223,8 @@ export const boids2d = async () => {
 
     // Load texture and materials
     boidMat = new ShaderMaterial("boidMat", scene, "./2d/boidShader", {
-      uniformBuffers: ["Scene", "boidVertices"],
-      storageBuffers: ["boids"],
+      uniformBuffers: ["Scene"],
+      storageBuffers: ["boids", "boidVertices"],
       shaderLanguage: ShaderLanguage.WGSL,
     });
     boidMat.setStorageBuffer("boids", boidsComputeBuffer);
@@ -235,12 +235,10 @@ export const boids2d = async () => {
     boidMesh.isUnIndexed = true;
     boidMesh.subMeshes[0].verticesCount = numBoids * 3;
 
-    boidVerticesBuffer = new UniformBuffer(
-      engine,
-      triangleMesh.vertices.slice(0, 12) // Only need front face
-    );
-    boidVerticesBuffer.update();
-    boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
+    const verts = triangleMesh.vertices.slice(0, 12); // Only need front face
+    boidVerticesBuffer = new StorageBuffer(engine, verts.length * 4);
+    boidVerticesBuffer.update(verts);
+    boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
 
     boidMesh.material = boidMat;
     boidMesh.buildBoundingInfo(
@@ -323,6 +321,18 @@ export const boids2d = async () => {
     );
   };
 
+  const disposeAll = () => {
+    scene.dispose();
+    boidsComputeBuffer.dispose();
+    boidsComputeBuffer2.dispose();
+    gridBuffer.dispose();
+    gridOffsetsBuffer.dispose();
+    gridOffsetsBuffer2.dispose();
+    gridSumsBuffer.dispose();
+    gridSumsBuffer2.dispose();
+    boidVerticesBuffer.dispose();
+  };
+
   setup();
 
   canvas.onwheel = (e) => {
@@ -353,15 +363,7 @@ export const boids2d = async () => {
     if (numBoids > boidLimit) {
       numBoids = boidLimit;
     }
-    scene.dispose();
-    boidsComputeBuffer.dispose();
-    boidsComputeBuffer2.dispose();
-    gridBuffer.dispose();
-    gridOffsetsBuffer.dispose();
-    gridOffsetsBuffer2.dispose();
-    gridSumsBuffer.dispose();
-    gridSumsBuffer2.dispose();
-    boidVerticesBuffer.dispose();
+    disposeAll();
     setup();
   };
 
@@ -428,7 +430,10 @@ export const boids2d = async () => {
     addSumsComputeShader.dispatch(blocks, 1, 1);
     rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    params.updateFloat("dt", scene.deltaTime / 1000 || 0.016);
+    const dt = scene.deltaTime / 1000;
+    if (isFinite(dt) && dt > 0) {
+      params.updateFloat("dt", dt);
+    }
     params.updateFloat("zoom", orthoSize / 3);
     boidMat.setFloat("zoom", orthoSize / 3);
     params.update();
