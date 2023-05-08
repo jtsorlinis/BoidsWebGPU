@@ -212,13 +212,9 @@ export const boids3d = async () => {
     gridTotalCells = gridDimX * gridDimY * gridDimZ;
     blocks = Math.ceil(gridTotalCells / blockSize);
 
-    const stride = 8;
-    const boids = new Float32Array(numBoids * stride);
-
     // Boids
-    boidsComputeBuffer = new StorageBuffer(engine, boids.byteLength);
-    boidsComputeBuffer2 = new StorageBuffer(engine, boids.byteLength);
-    boidsComputeBuffer.update(boids);
+    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 32);
+    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 32);
 
     // Load texture and materials
     boidMat = new ShaderMaterial("boidMat", scene, "./3d/boidShader3d", {
