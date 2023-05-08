@@ -10,6 +10,7 @@ import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { setupIncludes } from "./shaderIncludes";
+import { triangleMesh } from "./triangleMesh";
 
 export const boids2d = async () => {
   let numBoids = 32;
@@ -234,8 +235,10 @@ export const boids2d = async () => {
     boidMesh.isUnIndexed = true;
     boidMesh.subMeshes[0].verticesCount = numBoids * 3;
 
-    const positions = [0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0];
-    boidVerticesBuffer = new UniformBuffer(engine, positions);
+    boidVerticesBuffer = new UniformBuffer(
+      engine,
+      triangleMesh.vertices.slice(0, 12) // Only need front face
+    );
     boidVerticesBuffer.update();
     boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
 
