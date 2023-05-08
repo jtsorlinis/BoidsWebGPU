@@ -9,6 +9,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { setupIncludes } from "./shaderIncludes";
+import { pyramidMesh } from "./pyramidMesh";
 
 export const boids3d = async () => {
   let numBoids = 32;
@@ -230,17 +231,12 @@ export const boids3d = async () => {
     const boidMesh = new Mesh("custom", scene);
     boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
     boidMesh.isUnIndexed = true;
-    boidMesh.subMeshes[0].verticesCount = numBoids * 6;
+    boidMesh.subMeshes[0].verticesCount = numBoids * 18;
 
-    const positions = [
-      0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0, -0.4,
-      -0.5, 0, 0, 0, 0.5, 0, 0,
-    ];
-    boidVerticesBuffer = new UniformBuffer(engine, positions);
+    boidVerticesBuffer = new UniformBuffer(engine, pyramidMesh.vertices);
     boidVerticesBuffer.update();
     boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
-    const normals = [0, 0, -1, 0, 0, 0, 1, 0];
-    boidNormalsBuffer = new UniformBuffer(engine, normals);
+    boidNormalsBuffer = new UniformBuffer(engine, pyramidMesh.normals);
     boidNormalsBuffer.update();
     boidMat.setUniformBuffer("boidNormals", boidNormalsBuffer);
     boidMat.setVector3("cameraPosition", camera.position);
