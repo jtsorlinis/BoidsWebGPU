@@ -244,8 +244,8 @@ export const boids3d = async () => {
 
     boidMesh.material = boidMat;
     boidMesh.buildBoundingInfo(
-      new Vector3(-xBound, -yBound, 0),
-      new Vector3(xBound, yBound, 0)
+      new Vector3(-xBound, -yBound, -zBound),
+      new Vector3(xBound, yBound, zBound)
     );
 
     params.updateUInt("numBoids", numBoids);
