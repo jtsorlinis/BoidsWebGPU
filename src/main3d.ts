@@ -25,6 +25,10 @@ export const boids3d = async () => {
   const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
   const boidText = document.getElementById("boidText") as HTMLElement;
   const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
+  const simpleToggle = document.getElementById(
+    "simpleToggle"
+  ) as HTMLInputElement;
+  simpleToggle.checked = false;
 
   const fpsText = document.getElementById("fpsText") as HTMLElement;
   const engine = new WebGPUEngine(canvas, {
@@ -162,6 +166,7 @@ export const boids3d = async () => {
   let boidMat: ShaderMaterial;
   let boidVerticesBuffer: StorageBuffer;
   let boidNormalsBuffer: StorageBuffer;
+  let boidMesh: Mesh;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
   params.addUniform("numBoids", 1);
@@ -225,8 +230,8 @@ export const boids3d = async () => {
     boidMat.setStorageBuffer("boids", boidsComputeBuffer);
 
     // Create boid mesh
-    const mesh = pyramidMesh;
-    const boidMesh = new Mesh("custom", scene);
+    const mesh = simpleToggle.checked ? triangleMesh : pyramidMesh;
+    boidMesh = new Mesh("custom", scene);
     boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
     boidMesh.isUnIndexed = true;
     boidMesh.subMeshes[0].verticesCount = (numBoids * mesh.vertices.length) / 4;
@@ -238,7 +243,7 @@ export const boids3d = async () => {
     boidNormalsBuffer.update(mesh.normals);
     boidMat.setStorageBuffer("boidNormals", boidNormalsBuffer);
     boidMat.setUInt("numVertices", mesh.vertices.length / 4);
-    boidMat.setVector3("cameraPosition", camera.position);
+    boidMat.setVector3("cameraPosition", camera.position); // TODO: wtf move this
 
     boidMesh.material = boidMat;
     boidMesh.buildBoundingInfo(
@@ -361,6 +366,20 @@ export const boids3d = async () => {
     debounce = setTimeout(function () {
       engine.resize();
     }, 100);
+  };
+
+  simpleToggle.onclick = () => {
+    const mesh = simpleToggle.checked ? triangleMesh : pyramidMesh;
+    boidMesh.subMeshes[0].verticesCount = (numBoids * mesh.vertices.length) / 4;
+    boidVerticesBuffer.dispose();
+    boidVerticesBuffer = new StorageBuffer(engine, mesh.vertices.length * 4);
+    boidVerticesBuffer.update(mesh.vertices);
+    boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
+    boidNormalsBuffer.dispose();
+    boidNormalsBuffer = new StorageBuffer(engine, mesh.normals.length * 4);
+    boidNormalsBuffer.update(mesh.normals);
+    boidMat.setStorageBuffer("boidNormals", boidNormalsBuffer);
+    boidMat.setUInt("numVertices", mesh.vertices.length / 4);
   };
 
   engine.runRenderLoop(async () => {

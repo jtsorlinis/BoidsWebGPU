@@ -5,7 +5,8 @@ import { WebGPUEngine } from "@babylonjs/core";
 
 let is3D = false;
 let engine: WebGPUEngine | null;
-const optionsUI = document.getElementById("options") as HTMLElement;
+const optionsUI2D = document.getElementById("options2d") as HTMLElement;
+const optionsUI3D = document.getElementById("options3d") as HTMLElement;
 const modeRadio2D = document.getElementById("radio2D") as HTMLInputElement;
 const modeRadio3D = document.getElementById("radio3D") as HTMLInputElement;
 const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
@@ -20,7 +21,8 @@ modeRadio3D.onchange = () => {
 };
 
 const startScene = async () => {
-  optionsUI.style.display = is3D ? "none" : "block";
+  optionsUI2D.style.display = is3D ? "none" : "block";
+  optionsUI3D.style.display = is3D ? "block" : "none";
   engine?.dispose();
   engine = null;
 
