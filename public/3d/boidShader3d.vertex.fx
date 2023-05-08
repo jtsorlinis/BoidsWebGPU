@@ -8,12 +8,13 @@ var<uniform> boidNormals : array<vec3<f32>,2>;
 varying worldPos : vec3<f32>;
 varying norm : vec3<f32>;
 
-const up = vec3<f32>(0.0, 1.0, 0.0);
+const HALF_PI: f32 = 1.57079632679;
 
-fn rotate3d(v : vec3<f32>, vel : vec3<f32>) -> vec3<f32> {
-    let axis = normalize(cross(up, vel));
-    let angle = acos(dot(up, normalize(vel)));
-    return v * cos(angle) + cross(axis, v) * sin(angle) + axis * dot(axis, v) * (1.0 - cos(angle));
+fn rotate3d(v: vec3<f32>, vel: vec3<f32>) -> vec3<f32> {
+    let pitch = atan2(vel.y, length(vel.xz)) - HALF_PI;
+    var r = vec3<f32>(-v.y * sin(pitch) + v.x * cos(pitch), v.y * cos(pitch) + v.x * sin(pitch), v.z);
+    let yaw = atan2(vel.x, vel.z) - HALF_PI;
+    return vec3<f32>(r.x * cos(yaw) + r.z * sin(yaw), r.y, r.z * cos(yaw) - r.x * sin(yaw));;
 }
 
 @vertex
