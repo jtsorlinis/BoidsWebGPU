@@ -234,16 +234,16 @@ export const boids3d = async () => {
     boidMesh = new Mesh("custom", scene);
     boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
     boidMesh.isUnIndexed = true;
-    boidMesh.subMeshes[0].verticesCount = (numBoids * mesh.vertices.length) / 4;
+    const numVerts = mesh.vertices.length / 4;
+    boidMesh.subMeshes[0].verticesCount = numBoids * numVerts;
+    boidMat.setUInt("numVertices", numVerts);
 
-    boidVerticesBuffer = new StorageBuffer(engine, mesh.vertices.length * 4);
+    boidVerticesBuffer = new StorageBuffer(engine, mesh.vertices.byteLength);
     boidVerticesBuffer.update(mesh.vertices);
     boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
-    boidNormalsBuffer = new StorageBuffer(engine, mesh.normals.length * 4);
+    boidNormalsBuffer = new StorageBuffer(engine, mesh.normals.byteLength);
     boidNormalsBuffer.update(mesh.normals);
     boidMat.setStorageBuffer("boidNormals", boidNormalsBuffer);
-    boidMat.setUInt("numVertices", mesh.vertices.length / 4);
-    boidMat.setVector3("cameraPosition", camera.position); // TODO: wtf move this
 
     boidMesh.material = boidMat;
     boidMesh.buildBoundingInfo(
@@ -421,6 +421,7 @@ export const boids3d = async () => {
       params.update();
     }
     boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    boidMat.setVector3("cameraPosition", camera.position);
     scene.render();
   });
 

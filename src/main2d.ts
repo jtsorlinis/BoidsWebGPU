@@ -232,7 +232,7 @@ export const boids2d = async () => {
     boidMesh.subMeshes[0].verticesCount = numBoids * 3;
 
     const verts = triangleMesh.vertices.slice(0, 12); // Only need front face
-    boidVerticesBuffer = new StorageBuffer(engine, verts.length * 4);
+    boidVerticesBuffer = new StorageBuffer(engine, verts.byteLength);
     boidVerticesBuffer.update(verts);
     boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
 
