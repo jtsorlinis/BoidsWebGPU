@@ -9,6 +9,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { setupIncludes } from "./shaderIncludes";
+import { triangleMesh } from "./triangleMesh";
 
 export const boids3d = async () => {
   let numBoids = 32;
@@ -232,15 +233,11 @@ export const boids3d = async () => {
     boidMesh.isUnIndexed = true;
     boidMesh.subMeshes[0].verticesCount = numBoids * 6;
 
-    const positions = [
-      0, 0.5, 0, 0, -0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0, 0.4, -0.5, 0, 0, -0.4,
-      -0.5, 0, 0, 0, 0.5, 0, 0,
-    ];
-    boidVerticesBuffer = new UniformBuffer(engine, positions);
+    boidVerticesBuffer = new UniformBuffer(engine, triangleMesh.vertices);
     boidVerticesBuffer.update();
     boidMat.setUniformBuffer("boidVertices", boidVerticesBuffer);
-    const normals = [0, 0, -1, 0, 0, 0, 1, 0];
-    boidNormalsBuffer = new UniformBuffer(engine, normals);
+
+    boidNormalsBuffer = new UniformBuffer(engine, triangleMesh.normals);
     boidNormalsBuffer.update();
     boidMat.setUniformBuffer("boidNormals", boidNormalsBuffer);
     boidMat.setVector3("cameraPosition", camera.position);
