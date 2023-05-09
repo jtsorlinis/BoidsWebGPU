@@ -11,6 +11,11 @@ const modeRadio2D = document.getElementById("radio2D") as HTMLInputElement;
 const modeRadio3D = document.getElementById("radio3D") as HTMLInputElement;
 const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
 
+if (!navigator.gpu) {
+  document.body.innerHTML =
+    "<div id='loader'>WebGPU is not supported on this browser, please update to the latest version of Chrome</div>";
+}
+
 modeRadio2D.onchange = () => {
   is3D = false;
   startScene();

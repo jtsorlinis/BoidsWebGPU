@@ -1,5 +1,4 @@
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import "./style.css";
 import { ShaderLanguage, UniversalCamera, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
@@ -36,11 +35,7 @@ export const boids3d = async () => {
     enableAllFeatures: true,
   });
   await engine.initAsync();
-
-  if (!engine.getCaps()?.supportComputeShaders) {
-    document.body.innerHTML =
-      "WebGPU is not supported on this browser, please update to the latest version of Chrome";
-  }
+  document.getElementById("loader")?.remove();
 
   const blockSize = engine.currentLimits.maxComputeWorkgroupSizeX;
   setupIncludes(blockSize);
