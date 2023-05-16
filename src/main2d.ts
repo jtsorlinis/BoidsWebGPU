@@ -8,7 +8,7 @@ import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { setupIncludes } from "./shaders";
-import { triangleMesh } from "./triangleMesh";
+import { triangleMesh } from "./meshes/triangleMesh";
 import { createBoidMaterial, createComputeShaders } from "./shaders/2d";
 
 export const boids2d = async () => {
