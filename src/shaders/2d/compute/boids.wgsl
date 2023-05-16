@@ -75,7 +75,7 @@ fn avoidPredators(boid: ptr<function, Boid>) {
   if(distance((*boid).pos, params.mousePos) < params.zoom
       && abs((*boid).pos.y) < params.yBound
       && abs((*boid).pos.x) < params.xBound) {
-      let dist = max(params.minDistanceSq, distance((*boid).pos, params.mousePos) / params.zoom);
+      let dist = max(sqrt(params.minDistanceSq), distance((*boid).pos, params.mousePos) / params.zoom);
       let force = normalize((*boid).pos - params.mousePos) / pow(dist,2);
       (*boid).vel += force * params.dt;
   }

@@ -1,15 +1,15 @@
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { Scalar, ShaderLanguage, WebGPUEngine } from "@babylonjs/core";
+import { Scalar, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
-import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
-import { setupIncludes } from "./shaderIncludes";
+import { setupIncludes } from "./shaders";
 import { triangleMesh } from "./triangleMesh";
+import { createBoidMaterial, createComputeShaders } from "./shaders/2d";
 
 export const boids2d = async () => {
   let numBoids = 32;
@@ -49,107 +49,16 @@ export const boids2d = async () => {
   let aspectRatio: number;
   let camera: FreeCamera;
 
-  const generateBoidsComputeShader = new ComputeShader(
-    "generateBoids",
-    engine,
-    "./2d/generateBoids",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-      },
-    }
-  );
-
-  const boidComputeShader = new ComputeShader("boids", engine, "./2d/boids", {
-    bindingsMapping: {
-      params: { group: 0, binding: 0 },
-      boids: { group: 0, binding: 1 },
-      boidsIn: { group: 0, binding: 2 },
-      gridOffsets: { group: 0, binding: 3 },
-    },
-  });
-
-  const clearGridComputeShader = new ComputeShader(
-    "clearGrid",
-    engine,
-    "./2d/clearGrid",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsets: { group: 0, binding: 1 },
-      },
-    }
-  );
-
-  const updateGridComputeShader = new ComputeShader(
-    "updateGrid",
-    engine,
-    "./2d/updateGrid",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        grid: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        boids: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const prefixSumComputeShader = new ComputeShader(
-    "prefixSum",
-    engine,
-    "./2d/prefixSum",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsetsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
-        gridSums: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const sumBucketsComputeShader = new ComputeShader(
-    "sumBuckets",
-    engine,
-    "./2d/sumBuckets",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridSumsOut: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const addSumsComputeShader = new ComputeShader(
-    "addSums",
-    engine,
-    "./2d/addSums",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const rearrangeBoidsComputeShader = new ComputeShader(
-    "rearrangeBoids",
-    engine,
-    "./2d/rearrangeBoids",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        grid: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        boidsIn: { group: 0, binding: 3 },
-        boidsOut: { group: 0, binding: 4 },
-      },
-    }
-  );
+  const {
+    generateBoidsComputeShader,
+    boidComputeShader,
+    clearGridComputeShader,
+    updateGridComputeShader,
+    prefixSumComputeShader,
+    sumBucketsComputeShader,
+    addSumsComputeShader,
+    rearrangeBoidsComputeShader,
+  } = createComputeShaders(engine);
 
   let boidsComputeBuffer: StorageBuffer;
   let boidsComputeBuffer2: StorageBuffer;
@@ -213,11 +122,7 @@ export const boids2d = async () => {
     boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 16);
 
     // Load texture and materials
-    boidMat = new ShaderMaterial("boidMat", scene, "./2d/boidShader", {
-      uniformBuffers: ["Scene"],
-      storageBuffers: ["boids", "boidVertices"],
-      shaderLanguage: ShaderLanguage.WGSL,
-    });
+    boidMat = createBoidMaterial(scene);
     boidMat.setStorageBuffer("boids", boidsComputeBuffer);
 
     // Create boid mesh

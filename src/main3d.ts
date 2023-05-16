@@ -7,7 +7,7 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
-import { setupIncludes } from "./shaderIncludes";
+import { setupIncludes } from "./shaders";
 import { pyramidMesh } from "./pyramidMesh";
 import { triangleMesh } from "./triangleMesh";
 
