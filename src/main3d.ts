@@ -1,7 +1,6 @@
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { ShaderLanguage, UniversalCamera, WebGPUEngine } from "@babylonjs/core";
+import { UniversalCamera, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
-import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -10,6 +9,7 @@ import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { setupIncludes } from "./shaders";
 import { pyramidMesh } from "./pyramidMesh";
 import { triangleMesh } from "./triangleMesh";
+import { createBoid3dMaterial, createComputeShaders3d } from "./shaders/3d";
 
 export const boids3d = async () => {
   let numBoids = 32;
@@ -47,107 +47,16 @@ export const boids3d = async () => {
   let spaceBounds: number;
   let camera: UniversalCamera;
 
-  const generateBoidsComputeShader = new ComputeShader(
-    "generateBoids",
-    engine,
-    "./3d/generateBoids3d",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-      },
-    }
-  );
-
-  const boidComputeShader = new ComputeShader("boids", engine, "./3d/boids3d", {
-    bindingsMapping: {
-      params: { group: 0, binding: 0 },
-      boids: { group: 0, binding: 1 },
-      boidsIn: { group: 0, binding: 2 },
-      gridOffsets: { group: 0, binding: 3 },
-    },
-  });
-
-  const clearGridComputeShader = new ComputeShader(
-    "clearGrid",
-    engine,
-    "./3d/clearGrid3d",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsets: { group: 0, binding: 1 },
-      },
-    }
-  );
-
-  const updateGridComputeShader = new ComputeShader(
-    "updateGrid",
-    engine,
-    "./3d/updateGrid3d",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        grid: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        boids: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const prefixSumComputeShader = new ComputeShader(
-    "prefixSum",
-    engine,
-    "./3d/prefixSum3d",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsetsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
-        gridSums: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const sumBucketsComputeShader = new ComputeShader(
-    "sumBuckets",
-    engine,
-    "./3d/sumBuckets3d",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridSumsOut: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const addSumsComputeShader = new ComputeShader(
-    "addSums",
-    engine,
-    "./3d/addSums3d",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const rearrangeBoidsComputeShader = new ComputeShader(
-    "rearrangeBoids",
-    engine,
-    "./3d/rearrangeBoids3d",
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        grid: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        boidsIn: { group: 0, binding: 3 },
-        boidsOut: { group: 0, binding: 4 },
-      },
-    }
-  );
+  const {
+    generateBoidsComputeShader,
+    boidComputeShader,
+    clearGridComputeShader,
+    updateGridComputeShader,
+    prefixSumComputeShader,
+    sumBucketsComputeShader,
+    addSumsComputeShader,
+    rearrangeBoidsComputeShader,
+  } = createComputeShaders3d(engine);
 
   let boidsComputeBuffer: StorageBuffer;
   let boidsComputeBuffer2: StorageBuffer;
@@ -217,11 +126,7 @@ export const boids3d = async () => {
     boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 32);
 
     // Load texture and materials
-    boidMat = new ShaderMaterial("boidMat", scene, "./3d/boidShader3d", {
-      uniformBuffers: ["Scene"],
-      storageBuffers: ["boids", "boidVertices", "boidNormals"],
-      shaderLanguage: ShaderLanguage.WGSL,
-    });
+    boidMat = createBoid3dMaterial(scene);
     boidMat.setStorageBuffer("boids", boidsComputeBuffer);
 
     // Create boid mesh
