@@ -32,6 +32,8 @@ export const setupIncludes = (blockSize: number) => {
     struct Boid {
       pos : vec2<f32>,
       vel : vec2<f32>,
+      neighbours : f32,
+      padding : f32,
     };
   `;
 
@@ -65,6 +67,7 @@ export const setupIncludes = (blockSize: number) => {
     struct Boid3d {
       pos : vec3<f32>,
       vel : vec3<f32>,
+      neighbours : f32,
     };
   `;
 };

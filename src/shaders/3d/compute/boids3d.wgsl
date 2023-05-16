@@ -59,6 +59,7 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>) {
   }
 
   (*boid).vel += close * (params.separationFactor * params.dt);
+  (*boid).neighbours = f32(neighbours) * .0025;
 }
 
 fn limitSpeed(boid: ptr<function, Boid3d>) {

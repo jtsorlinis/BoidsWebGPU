@@ -5,6 +5,7 @@ var<storage,read> boids: array<Boid>;
 var<storage,read> boidVertices : array<vec3<f32>>;
 
 varying wPos : vec2<f32>;
+varying neighbours : f32;
 
 @vertex
 fn main(input : VertexInputs) -> FragmentInputs {
@@ -19,4 +20,5 @@ fn main(input : VertexInputs) -> FragmentInputs {
     );
     vertexOutputs.wPos = boid.pos;
     vertexOutputs.position = scene.viewProjection * vec4(rotated + boid.pos, 0.0, 1.0);
+    vertexOutputs.neighbours = boid.neighbours;
 }    

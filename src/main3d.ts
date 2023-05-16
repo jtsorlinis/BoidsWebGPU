@@ -98,6 +98,7 @@ export const boids3d = async () => {
   const setup = () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
     scene = new Scene(engine);
+    scene.clearColor.set(0, 0, 0, 1);
     camera = new UniversalCamera("camera1", new Vector3(0, 0, -5), scene);
     camera.minZ = 0.1;
     camera.speed = 0.3;

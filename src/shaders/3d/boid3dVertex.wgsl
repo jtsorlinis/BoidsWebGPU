@@ -8,6 +8,7 @@ uniform numVertices : u32;
 
 varying worldPos : vec3<f32>;
 varying norm : vec3<f32>;
+varying neighbours : f32;
 
 const HALF_PI: f32 = 1.57079632679;
 
@@ -28,4 +29,5 @@ fn main(input : VertexInputs) -> FragmentInputs {
     vertexOutputs.worldPos = pos;
     vertexOutputs.norm = normal;
     vertexOutputs.position = scene.viewProjection * vec4(pos, 1.0);
+    vertexOutputs.neighbours = boid.neighbours;
 }    

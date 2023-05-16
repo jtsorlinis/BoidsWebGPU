@@ -99,6 +99,7 @@ export const boids2d = async () => {
   const setup = () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
     scene = new Scene(engine);
+    scene.clearColor.set(0, 0, 0, 1);
     camera = new FreeCamera("camera1", new Vector3(0, 0, -5), scene);
     camera.mode = 1;
     aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
@@ -118,8 +119,8 @@ export const boids2d = async () => {
     blocks = Math.ceil(gridTotalCells / blockSize);
 
     // Boids
-    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 16);
-    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 16);
+    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 24);
+    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 24);
 
     // Load texture and materials
     boidMat = createBoidMaterial(scene);
