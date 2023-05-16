@@ -6,8 +6,8 @@
 var<private> rngState : u32;
 
 fn rand_pcg(min: f32, max: f32) -> f32 {
-  var state = rngState;
   rngState = rngState * 747796405u + 2891336453u;
+  var state = rngState;
   var word: u32 = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
   var float = f32((word >> 22u) ^ word) / 4294967296.0;
   return float * (max - min) + min;
