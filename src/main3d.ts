@@ -286,6 +286,10 @@ export const boids3d = async () => {
     const fps = engine.getFps();
     fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
 
+    params.updateFloat("dt", engine.getDeltaTime() / 1000);
+    params.update();
+    boidMat.setVector3("cameraPosition", camera.position);
+
     clearGridComputeShader.dispatch(blocks, 1, 1);
     updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
@@ -315,13 +319,7 @@ export const boids3d = async () => {
     addSumsComputeShader.dispatch(blocks, 1, 1);
     rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    const dt = scene.deltaTime / 1000;
-    if (isFinite(dt) && dt > 0) {
-      params.updateFloat("dt", dt);
-      params.update();
-    }
     boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
-    boidMat.setVector3("cameraPosition", camera.position);
     scene.render();
   });
 
