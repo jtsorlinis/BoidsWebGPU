@@ -106,8 +106,7 @@ export const createComputeShaders = (engine: ThinEngine) => {
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridSumsOut: { group: 0, binding: 2 },
+        gridSumOfSums: { group: 0, binding: 1 },
       },
     }
   );

@@ -67,8 +67,10 @@ export const boids2d = async () => {
   let gridOffsetsBuffer2: StorageBuffer;
   let gridSumsBuffer: StorageBuffer;
   let gridSumsBuffer2: StorageBuffer;
+  let gridSumOfSumsBuffer: StorageBuffer;
   let gridTotalCells: number;
   let blocks: number;
+  let sumOfSumsBlocks: number;
   let boidMat: ShaderMaterial;
   let boidVerticesBuffer: StorageBuffer;
 
@@ -92,6 +94,7 @@ export const boids2d = async () => {
   params.addUniform("divider", 1);
   params.addUniform("rngSeed", 1);
   params.addUniform("blocks", 1);
+  params.addUniform("sumOfSumsBlocks", 1);
   params.addUniform("avoidMouse", 1);
   params.addUniform("zoom", 1);
   params.addFloat2("mousePos", 0, 0);
@@ -116,6 +119,7 @@ export const boids2d = async () => {
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
     gridTotalCells = gridDimX * gridDimY;
     blocks = Math.ceil(gridTotalCells / blockSize);
+    sumOfSumsBlocks = Math.ceil(blocks / blockSize);
 
     // Boids
     boidsComputeBuffer = new StorageBuffer(engine, numBoids * 16);
@@ -159,6 +163,7 @@ export const boids2d = async () => {
     params.updateUInt("gridTotalCells", gridTotalCells);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
     params.updateUInt("blocks", blocks);
+    params.updateUInt("sumOfSumsBlocks", sumOfSumsBlocks);
 
     params.update();
 
@@ -168,6 +173,7 @@ export const boids2d = async () => {
     gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
     gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
     gridSumsBuffer2 = new StorageBuffer(engine, blocks * 4);
+    gridSumOfSumsBuffer = new StorageBuffer(engine, sumOfSumsBlocks * 4);
 
     clearGridComputeShader.setUniformBuffer("params", params);
     clearGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
@@ -178,17 +184,14 @@ export const boids2d = async () => {
     updateGridComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
 
     prefixSumComputeShader.setUniformBuffer("params", params);
-    prefixSumComputeShader.setStorageBuffer(
-      "gridOffsetsOut",
-      gridOffsetsBuffer2
-    );
-    prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
-    prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
 
     sumBucketsComputeShader.setUniformBuffer("params", params);
+    sumBucketsComputeShader.setStorageBuffer(
+      "gridSumOfSums",
+      gridSumOfSumsBuffer
+    );
 
     addSumsComputeShader.setUniformBuffer("params", params);
-    addSumsComputeShader.setStorageBuffer("gridOffsetsOut", gridOffsetsBuffer2);
 
     rearrangeBoidsComputeShader.setUniformBuffer("params", params);
     rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
@@ -305,30 +308,30 @@ export const boids2d = async () => {
     clearGridComputeShader.dispatch(blocks, 1, 1);
     updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
-    prefixSumComputeShader.dispatch(blocks, 1, 1);
-
-    let swap = false;
-    for (let d = 1; d < gridTotalCells; d *= 2) {
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsIn",
-        swap ? gridSumsBuffer2 : gridSumsBuffer
-      );
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsOut",
-        swap ? gridSumsBuffer : gridSumsBuffer2
-      );
-
-      params.updateUInt("divider", d);
-      params.update();
-      sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
-      swap = !swap;
-    }
-
-    addSumsComputeShader.setStorageBuffer(
-      "gridSumsIn",
-      swap ? gridSumsBuffer2 : gridSumsBuffer
+    // Sum each bucket
+    prefixSumComputeShader.setStorageBuffer(
+      "gridOffsetsOut",
+      gridOffsetsBuffer2
     );
-    addSumsComputeShader.dispatch(blocks, 1, 1);
+    prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
+    prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
+    prefixSumComputeShader.dispatch(blocks);
+
+    prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridSumsBuffer);
+    prefixSumComputeShader.setStorageBuffer("gridOffsetsOut", gridSumsBuffer2);
+    prefixSumComputeShader.setStorageBuffer("gridSums", gridSumOfSumsBuffer);
+    prefixSumComputeShader.dispatchWhenReady(sumOfSumsBlocks);
+
+    sumBucketsComputeShader.dispatch(1);
+
+    addSumsComputeShader.setStorageBuffer("gridSumsIn", gridSumOfSumsBuffer);
+    addSumsComputeShader.setStorageBuffer("gridOffsetsOut", gridSumsBuffer2);
+    addSumsComputeShader.dispatch(sumOfSumsBlocks);
+
+    addSumsComputeShader.setStorageBuffer("gridSumsIn", gridSumsBuffer2);
+    addSumsComputeShader.setStorageBuffer("gridOffsetsOut", gridOffsetsBuffer2);
+    addSumsComputeShader.dispatch(blocks);
+
     rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
     boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
