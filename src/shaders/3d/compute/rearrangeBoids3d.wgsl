@@ -8,14 +8,14 @@
 
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  var index : u32 = GlobalInvocationID.x;
+  let index : u32 = GlobalInvocationID.x;
 
   if (index >= params.numBoids) {
     return;
   }
 
-  var gridID = grid[index].x;
-  var cellOffset = grid[index].y;
-  var newIndex = gridOffsets[gridID] - 1 - cellOffset;
+  let gridID = grid[index].x;
+  let cellOffset = grid[index].y;
+  let newIndex = gridOffsets[gridID] - 1 - cellOffset;
   boidsOut[newIndex] = boidsIn[index];
 }

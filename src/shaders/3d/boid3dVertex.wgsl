@@ -13,7 +13,7 @@ const HALF_PI: f32 = 1.57079632679;
 
 fn rotate3d(v: vec3<f32>, vel: vec3<f32>) -> vec3<f32> {
     let pitch = atan2(vel.y, length(vel.xz)) - HALF_PI;
-    var r = vec3<f32>(-v.y * sin(pitch) + v.x * cos(pitch), v.y * cos(pitch) + v.x * sin(pitch), v.z);
+    let r = vec3<f32>(-v.y * sin(pitch) + v.x * cos(pitch), v.y * cos(pitch) + v.x * sin(pitch), v.z);
     let yaw = atan2(vel.x, vel.z) - HALF_PI;
     return vec3<f32>(r.x * cos(yaw) + r.z * sin(yaw), r.y, r.z * cos(yaw) - r.x * sin(yaw));;
 }

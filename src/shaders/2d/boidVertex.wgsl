@@ -12,8 +12,8 @@ fn main(input : VertexInputs) -> FragmentInputs {
     let vertexId = vertexInputs.vertexIndex - (instanceId * 3);
     let boid = boids[instanceId];
     let angle = -atan2(boid.vel.x, boid.vel.y);
-    var pos = boidVertices[vertexId].xy * 0.1;
-    var rotated = vec2(
+    let pos = boidVertices[vertexId].xy * 0.1;
+    let rotated = vec2(
         pos.x * cos(angle) - pos.y * sin(angle),
         pos.x * sin(angle) + pos.y * cos(angle)
     );

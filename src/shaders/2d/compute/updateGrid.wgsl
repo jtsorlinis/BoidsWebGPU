@@ -6,20 +6,20 @@
 @binding(3) @group(0) var<storage, read> boids : array<Boid>;
 
 fn getGridID(boid: Boid) -> u32 {
-  var x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
-  var y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
+  let x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
+  let y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
   return (params.gridDimX * y) + x;
 }
 
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  var index : u32 = GlobalInvocationID.x;
+  let index : u32 = GlobalInvocationID.x;
 
   if (index >= params.numBoids) {
     return;
   }
 
-  var gridID = getGridID(boids[index]);
+  let gridID = getGridID(boids[index]);
   grid[index].x = gridID;
   grid[index].y = atomicAdd(&gridOffsets[gridID], 1);
 }

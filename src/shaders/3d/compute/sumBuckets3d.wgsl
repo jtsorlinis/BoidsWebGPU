@@ -6,7 +6,7 @@
 
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  var index : u32 = GlobalInvocationID.x;
+  let index : u32 = GlobalInvocationID.x;
 
   if (index >= params.blocks) {
     return;

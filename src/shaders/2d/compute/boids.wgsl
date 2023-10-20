@@ -6,8 +6,8 @@
 @binding(3) @group(0) var<storage, read_write> gridOffsets : array<u32>;
 
 fn getGridLocation(boid: Boid) -> vec2<u32> {
-  var x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
-  var y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
+  let x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
+  let y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
   return vec2<u32>(x, y);
 }
 
@@ -21,20 +21,20 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
   var avgVel : vec2<f32> = vec2<f32>();
   var neighbours: u32 = 0u;
 
-  var gridXY = getGridLocation(*boid);
-  var cell = getGridID(gridXY);
-  var visualRangeSq = params.visualRangeSq;
-  var minDistanceSq = params.minDistanceSq;
+  let gridXY = getGridLocation(*boid);
+  let cell = getGridID(gridXY);
+  let visualRangeSq = params.visualRangeSq;
+  let minDistanceSq = params.minDistanceSq;
 
   // Loop around cell
   for(var y = cell - params.gridDimX; y <= cell + params.gridDimX; y += params.gridDimX) {
-    var start = gridOffsets[y - 2];
-    var end = gridOffsets[y + 1];
+    let start = gridOffsets[y - 2];
+    let end = gridOffsets[y + 1];
 
     for (var i = start; i < end; i += 1) {
-      var other = boidsIn[i];
-      var diff = (*boid).pos - other.pos;
-      var distSq = dot(diff, diff);
+      let other = boidsIn[i];
+      let diff = (*boid).pos - other.pos;
+      let distSq = dot(diff, diff);
       if (distSq > 0 && distSq < visualRangeSq) {
         if(distSq < minDistanceSq) {
           close += diff / distSq;
@@ -57,8 +57,8 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
 }
 
 fn limitSpeed(boid: ptr<function, Boid>) {
-  var speed = length((*boid).vel);
-  var clampedSpeed = clamp(speed, params.minSpeed, params.maxSpeed);
+  let speed = length((*boid).vel);
+  let clampedSpeed = clamp(speed, params.minSpeed, params.maxSpeed);
   (*boid).vel *= clampedSpeed / speed;
 }
 
@@ -83,7 +83,7 @@ fn avoidPredators(boid: ptr<function, Boid>) {
 
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  var index : u32 = GlobalInvocationID.x;
+  let index : u32 = GlobalInvocationID.x;
 
   var boid = boidsIn[index];
   

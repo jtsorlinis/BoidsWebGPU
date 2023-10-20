@@ -6,9 +6,9 @@
 @binding(3) @group(0) var<storage, read_write> gridOffsets : array<u32>;
 
 fn getGridLocation(boid: Boid3d) -> vec3<u32> {
-  var x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
-  var y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
-  var z = u32(floor(boid.pos.z / params.gridCellSize + f32(params.gridDimZ / 2)));
+  let x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
+  let y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
+  let z = u32(floor(boid.pos.z / params.gridCellSize + f32(params.gridDimZ / 2)));
   return vec3<u32>(x, y, z);
 }
 
@@ -22,23 +22,23 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>) {
   var avgVel : vec3<f32> = vec3<f32>();
   var neighbours: u32 = 0u;
 
-  var gridXYZ = getGridLocation(*boid);
-  var cell = getGridID(gridXYZ);
-  var visualRangeSq = params.visualRangeSq;
-  var minDistanceSq = params.minDistanceSq;
-  var gridDimX = params.gridDimX;
-  var zStep = params.gridDimX * params.gridDimY;
+  let gridXYZ = getGridLocation(*boid);
+  let cell = getGridID(gridXYZ);
+  let visualRangeSq = params.visualRangeSq;
+  let minDistanceSq = params.minDistanceSq;
+  let gridDimX = params.gridDimX;
+  let zStep = params.gridDimX * params.gridDimY;
 
   // Loop around cell
   for (var z = cell - zStep; z <= cell + zStep; z += zStep) {
     for (var y = z - gridDimX; y <= z + gridDimX; y += gridDimX) {
-      var start = gridOffsets[y - 2];
-      var end = gridOffsets[y + 1];
+      let start = gridOffsets[y - 2];
+      let end = gridOffsets[y + 1];
 
       for (var i = start; i < end; i += 1) {
-        var other = boidsIn[i];
-        var diff = (*boid).pos - other.pos;
-        var distSq = dot(diff, diff);
+        let other = boidsIn[i];
+        let diff = (*boid).pos - other.pos;
+        let distSq = dot(diff, diff);
         if (distSq > 0 && distSq < visualRangeSq) {
           if(distSq < minDistanceSq) {
             close += diff / distSq;
@@ -62,8 +62,8 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>) {
 }
 
 fn limitSpeed(boid: ptr<function, Boid3d>) {
-  var speed = length((*boid).vel);
-  var clampedSpeed = clamp(speed, params.minSpeed, params.maxSpeed);
+  let speed = length((*boid).vel);
+  let clampedSpeed = clamp(speed, params.minSpeed, params.maxSpeed);
   (*boid).vel *= clampedSpeed / speed;
 }
 
@@ -81,7 +81,7 @@ fn keepInBounds(boid: ptr<function, Boid3d>) {
 
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  var index : u32 = GlobalInvocationID.x;
+  let index : u32 = GlobalInvocationID.x;
 
   var boid = boidsIn[index];
   
