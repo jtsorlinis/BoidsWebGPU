@@ -19,7 +19,7 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
   var center : vec2<f32> = vec2<f32>();
   var close : vec2<f32> = vec2<f32>();
   var avgVel : vec2<f32> = vec2<f32>();
-  var neighbours: u32 = 0u;
+  var neighbours: f32 = 0.0;
 
   let gridXY = getGridLocation(*boid);
   let cell = getGridID(gridXY);
@@ -37,18 +37,19 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
       let distSq = dot(diff, diff);
       if (distSq > 0 && distSq < visualRangeSq) {
         if(distSq < minDistanceSq) {
-          close += diff / distSq;
+          let invDistSq = 1.0 / distSq;
+          close += diff * invDistSq;
         }
         center += other.pos;
         avgVel += other.vel;
-        neighbours += 1u;
+        neighbours += 1.0;
       }
     }
   }
 
-  if (neighbours > 0u) {
-    center /= f32(neighbours);
-    avgVel /= f32(neighbours);
+  if (neighbours > 0.0) {
+    center /= neighbours;
+    avgVel /= neighbours;
     (*boid).vel += (center - (*boid).pos) * (params.cohesionFactor * params.dt);
     (*boid).vel += (avgVel - (*boid).vel) * (params.alignmentFactor * params.dt);
   }
