@@ -3,7 +3,7 @@ import {
   Scene,
   ShaderLanguage,
   ShaderMaterial,
-  ThinEngine,
+  WebGPUEngine,
 } from "@babylonjs/core";
 import boid3dVertex from "./boid3dVertex.wgsl?raw";
 import boid3dFragment from "./boid3dFragment.wgsl?raw";
@@ -32,7 +32,7 @@ export const createBoid3dMaterial = (scene: Scene) => {
   );
 };
 
-export const createComputeShaders3d = (engine: ThinEngine) => {
+export const createComputeShaders3d = (engine: WebGPUEngine) => {
   const generateBoidsComputeShader = new ComputeShader(
     "generateBoids",
     engine,
