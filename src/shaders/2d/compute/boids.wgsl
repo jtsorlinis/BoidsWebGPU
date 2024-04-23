@@ -35,14 +35,17 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
       let other = boidsIn[i];
       let diff = (*boid).pos - other.pos;
       let distSq = dot(diff, diff);
-      if (distSq > 0 && distSq < visualRangeSq) {
-        if(distSq < minDistanceSq) {
-          close += diff / distSq;
-        }
-        center += other.pos;
-        avgVel += other.vel;
-        neighbours += 1u;
+      let notSelf = select(0., 1., distSq > 0);
+      let inVisualRange = notSelf * select(0., 1., distSq < visualRangeSq);
+      let tooClose = notSelf * select(0., 1., distSq < minDistanceSq);
+
+      if(distSq > 0) {
+        close += tooClose * (diff / distSq);
       }
+
+      center += inVisualRange * other.pos;
+      avgVel += inVisualRange * other.vel;
+      neighbours += u32(inVisualRange);
     }
   }
 
