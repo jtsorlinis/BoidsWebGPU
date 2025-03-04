@@ -39,9 +39,10 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>) {
         let other = boidsIn[i];
         let diff = (*boid).pos - other.pos;
         let distSq = dot(diff, diff);
-        if (distSq > 0 && distSq < visualRangeSq) {
+        if (distSq < visualRangeSq && distSq > 0.0) {
           if(distSq < minDistanceSq) {
-            close += diff / distSq;
+            let invDistSq = 1.0 / distSq;
+            close += diff * invDistSq;
           }
           center += other.pos;
           avgVel += other.vel;
