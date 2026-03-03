@@ -1,42 +1,42 @@
 import "./style.css";
 import { boids2d } from "./main2d";
 import { boids3d } from "./main3d";
-import { WebGPUEngine } from "@babylonjs/core";
 
 let is3D = false;
-let engine: WebGPUEngine | null;
+let sceneHandle: { dispose: () => void } | null = null;
 const optionsUI2D = document.getElementById("options2d") as HTMLElement;
 const optionsUI3D = document.getElementById("options3d") as HTMLElement;
 const modeRadio2D = document.getElementById("radio2D") as HTMLInputElement;
 const modeRadio3D = document.getElementById("radio3D") as HTMLInputElement;
 const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
-
-if (!navigator.gpu) {
-  document.body.innerHTML =
-    "<div id='loader'>WebGPU is not supported on this browser, please update to the latest version of Chrome</div>";
-}
-
-modeRadio2D.onchange = () => {
-  is3D = false;
-  startScene();
-};
-modeRadio3D.onchange = () => {
-  is3D = true;
-  startScene();
-};
+const hasWebGPU = "gpu" in navigator;
 
 const startScene = async () => {
   optionsUI2D.style.display = is3D ? "none" : "block";
   optionsUI3D.style.display = is3D ? "block" : "none";
-  engine?.dispose();
-  engine = null;
+  sceneHandle?.dispose();
+  sceneHandle = null;
 
   boidSlider.valueAsNumber = 5;
   if (is3D) {
-    engine = await boids3d();
+    sceneHandle = await boids3d();
   } else {
-    engine = await boids2d();
+    sceneHandle = await boids2d();
   }
 };
 
-startScene();
+if (!hasWebGPU) {
+  document.body.innerHTML =
+    "<div id='loader'>WebGPU is not supported on this browser, please update to the latest version of Chrome</div>";
+} else {
+  modeRadio2D.onchange = () => {
+    is3D = false;
+    startScene();
+  };
+  modeRadio3D.onchange = () => {
+    is3D = true;
+    startScene();
+  };
+
+  startScene();
+}
