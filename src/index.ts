@@ -1,10 +1,9 @@
 import "./style.css";
 import { boids2d } from "./main2d";
 import { boids3d } from "./main3d";
-import { WebGPUEngine } from "@babylonjs/core";
 
 let is3D = false;
-let engine: WebGPUEngine | null;
+let engine: { dispose(): void } | null;
 const optionsUI2D = document.getElementById("options2d") as HTMLElement;
 const optionsUI3D = document.getElementById("options3d") as HTMLElement;
 const modeRadio2D = document.getElementById("radio2D") as HTMLInputElement;
