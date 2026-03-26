@@ -28,6 +28,7 @@ import {
   uint,
   uniform,
   uvec3,
+  vec3,
   workgroupArray,
   workgroupBarrier,
 } from "three/tsl";
@@ -110,28 +111,6 @@ const computeBounds = (numBoids: number, workgroupSize: number): Bounds => {
   };
 };
 
-const randomBetween = (min: number, max: number) =>
-  Math.random() * (max - min) + min;
-
-const initializeBoids = (
-  boidsArray: Float32Array,
-  numBoids: number,
-  bounds: Bounds,
-) => {
-  for (let index = 0; index < numBoids; index += 1) {
-    const offset = index * 8;
-
-    boidsArray[offset] = randomBetween(-bounds.xBound, bounds.xBound);
-    boidsArray[offset + 1] = randomBetween(-bounds.yBound, bounds.yBound);
-    boidsArray[offset + 2] = randomBetween(-bounds.zBound, bounds.zBound);
-    boidsArray[offset + 3] = 0;
-    boidsArray[offset + 4] = randomBetween(-1, 1);
-    boidsArray[offset + 5] = randomBetween(-1, 1);
-    boidsArray[offset + 6] = randomBetween(-1, 1);
-    boidsArray[offset + 7] = 0;
-  }
-};
-
 const createSimulation = (
   params: ParamNodes,
   numBoids: number,
@@ -150,9 +129,6 @@ const createSimulation = (
     "uint",
     gridOffsets.value.count,
   ).toAtomic();
-
-  initializeBoids(boids.value.array as Float32Array, numBoids, bounds);
-  boids.value.needsUpdate = true;
 
   const alignmentFactor: any = float(ALIGNMENT_FACTOR);
   const cellSize: any = float(VISUAL_RANGE);
@@ -180,6 +156,8 @@ const createSimulation = (
   const xBound: any = float(bounds.xBound);
   const yBound: any = float(bounds.yBound);
   const zBound: any = float(bounds.zBound);
+  const randSeed = uint(Math.floor(Math.random() * 4294967296));
+  const rngState = uint(0).toVar();
   const zeroUint: any = uint(0);
   const oneUint: any = uint(1);
   const prefixTemp = workgroupArrayNode("uint", workgroupSize * 2);
@@ -207,6 +185,46 @@ const createSimulation = (
     name: "getGridId",
     type: "uint",
   });
+
+  const randPCG = Fn(([min, max]: [any, any]) => {
+    rngState.assign(rngState.mul(747796405).add(2891336453));
+    const state = rngState.toVar();
+    const word = state
+      .shiftRight(state.shiftRight(28).add(uint(4)))
+      .bitXor(state)
+      .mul(uint(277803737));
+    const randomValue = word
+      .shiftRight(22)
+      .bitXor(word)
+      .toFloat()
+      .div(float(4294967296));
+
+    return randomValue.mul(max.sub(min)).add(min);
+  });
+
+  const generateBoids = Fn(() => {
+    If(instanceIndex.greaterThanEqual(numBoidsUint), () => {
+      Return();
+    });
+
+    const boid: any = boids.element(instanceIndex);
+    rngState.assign(randSeed.add(instanceIndex));
+
+    boid.get("pos").assign(
+      vec3(
+        randPCG(xBound.negate(), xBound),
+        randPCG(yBound.negate(), yBound),
+        randPCG(zBound.negate(), zBound),
+      ),
+    );
+    boid.get("vel").assign(
+      vec3(
+        randPCG(float(-1), float(1)),
+        randPCG(float(-1), float(1)),
+        randPCG(float(-1), float(1)),
+      ),
+    );
+  })().compute(numBoids, [workgroupSize]);
 
   const clearGrid = Fn(() => {
     If(instanceIndex.greaterThanEqual(gridTotalCellsUint), () => {
@@ -510,6 +528,7 @@ const createSimulation = (
     bounds,
     clearGrid,
     finalizeGridSums,
+    generateBoids,
     grid,
     gridOffsets,
     gridOffsetsInclusive,
@@ -734,6 +753,7 @@ export const boids3d = async () => {
         simulation?: ReturnType<typeof createSimulation>;
       }
     ).simulation;
+    simulation?.generateBoids.dispose();
     simulation?.clearGrid.dispose();
     simulation?.prefixSumGrid.dispose();
     simulation?.scanBlockSumsForward.dispose();
@@ -916,6 +936,7 @@ export const boids3d = async () => {
       }
     ).simulation = simulation;
 
+    nextRenderer.compute(simulation.generateBoids);
     boidText.innerHTML = `Boids: ${numBoids.toLocaleString()}`;
     document.getElementById("loader")?.remove();
     renderer.setAnimationLoop(renderFrame);

@@ -15,7 +15,6 @@ import {
   atomicAdd,
   float,
   instanceIndex,
-  rand,
   storage,
   struct,
   uint,
@@ -80,7 +79,10 @@ const createGpuOnlyStorageNode = (count: number, type: any) => {
   // Three infers "array of structs" vs "single struct" from the backing array
   // length, so keep a tiny placeholder array even though the real allocation is
   // GPU-only and sized via `gpuOnlyByteLength`.
-  const attribute = new BufferAttribute(new typeClass(itemSize * 2), itemSize) as any;
+  const attribute = new BufferAttribute(
+    new typeClass(itemSize * 2),
+    itemSize,
+  ) as any;
   attribute.count = count;
   attribute.isStorageBufferAttribute = true;
   attribute.isGpuOnlyStorageBufferAttribute = true;
@@ -180,11 +182,9 @@ const createSimulation = (
   const workgroupSizeUint: any = uint(workgroupSize);
   const xBound: any = float(bounds.xBound);
   const yBound: any = float(bounds.yBound);
-  const randomSeed: any = float(Math.random() * 10000);
+  const randSeed = uint(Math.floor(Math.random() * 4294967296));
+  const rngState = uint(0).toVar();
   const zeroUint: any = uint(0);
-
-  const randomValue = (offset: number) =>
-    rand(vec2(float(instanceIndex), randomSeed.add(float(offset))));
 
   const getGridLocation = Fn(([position]: [any]) => {
     return uvec2Node(
@@ -205,25 +205,41 @@ const createSimulation = (
     type: "uint",
   });
 
+  const randPCG = Fn(([min, max]: [any, any]) => {
+    rngState.assign(rngState.mul(747796405).add(2891336453));
+    const state = rngState.toVar();
+    const word = state
+      .shiftRight(state.shiftRight(28).add(uint(4)))
+      .bitXor(state)
+      .mul(uint(277803737));
+    const randomValue = word
+      .shiftRight(22)
+      .bitXor(word)
+      .toFloat()
+      .div(float(4294967296));
+
+    return randomValue.mul(max.sub(min)).add(min);
+  });
+
   const generateBoids = Fn(() => {
     If(instanceIndex.greaterThanEqual(numBoidsUint), () => {
       Return();
     });
 
     const boid: any = boids.element(instanceIndex);
+    rngState.assign(randSeed.add(instanceIndex));
 
-    boid.get("pos").assign(
-      vec2(
-        randomValue(1).mul(xBound.mul(float(2))).sub(xBound),
-        randomValue(2).mul(yBound.mul(float(2))).sub(yBound),
-      ),
-    );
-    boid.get("vel").assign(
-      vec2(
-        randomValue(3).mul(float(2)).sub(float(1)),
-        randomValue(4).mul(float(2)).sub(float(1)),
-      ),
-    );
+    boid
+      .get("pos")
+      .assign(
+        vec2(
+          randPCG(xBound.negate(), xBound),
+          randPCG(yBound.negate(), yBound),
+        ),
+      );
+    boid
+      .get("vel")
+      .assign(vec2(randPCG(float(-1), float(1)), randPCG(float(-1), float(1))));
   })().compute(numBoids, [workgroupSize]);
 
   const clearGrid = Fn(() => {
@@ -469,8 +485,7 @@ const createSimulation = (
     });
 
     If(params.avoidMouse.greaterThan(zeroUint), () => {
-      const inBounds = boidPos
-        .x
+      const inBounds = boidPos.x
         .abs()
         .lessThan(xBound)
         .and(boidPos.y.abs().lessThan(yBound));
@@ -483,15 +498,13 @@ const createSimulation = (
           .and(mouseDistance.lessThan(params.zoom))
           .and(inBounds),
         () => {
-          const dist = mouseDistance.div(params.zoom).max(minDistance).toVar(
-            "dist",
-          );
+          const dist = mouseDistance
+            .div(params.zoom)
+            .max(minDistance)
+            .toVar("dist");
 
           boidVel.addAssign(
-            mouseDelta
-              .normalize()
-              .div(dist.mul(dist))
-              .mul(params.dt),
+            mouseDelta.normalize().div(dist.mul(dist)).mul(params.dt),
           );
         },
       );

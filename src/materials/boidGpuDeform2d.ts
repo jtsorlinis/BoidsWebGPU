@@ -15,8 +15,7 @@ import {
   attributeArray,
   cameraProjectionMatrix,
   modelViewMatrix,
-  uint,
-  vec3,
+  vec2,
   vec4,
   vertexIndex,
 } from "three/tsl";
@@ -41,7 +40,10 @@ const unpackFrontFaceVertices = (source: Float32Array) => {
   return unpacked;
 };
 
-const createPlaceholderGeometry = (vertexCount: number, boundRadius: number) => {
+const createPlaceholderGeometry = (
+  vertexCount: number,
+  boundRadius: number,
+) => {
   const geometry = new BufferGeometry();
   const position = new BufferAttribute(new Float32Array(3), 3) as any;
   position.count = vertexCount;
@@ -62,23 +64,6 @@ class BoidMeshBasicNodeMaterial2d extends MeshBasicNodeMaterial {
   }
 }
 
-const rotateByVelocity2d = Fn(([value, velocity]: [any, any]) => {
-  const angle = atan(velocity.x, velocity.y).negate();
-
-  return vec3(
-    value.x.mul(angle.cos()).sub(value.y.mul(angle.sin())),
-    value.x.mul(angle.sin()).add(value.y.mul(angle.cos())),
-    value.z,
-  );
-}).setLayout({
-  inputs: [
-    { name: "value", type: "vec3" },
-    { name: "velocity", type: "vec2" },
-  ],
-  name: "rotateByVelocity2d",
-  type: "vec3",
-});
-
 export const createBoidGpuDeformMesh2d = ({
   baseMesh,
   boids,
@@ -92,8 +77,10 @@ export const createBoidGpuDeformMesh2d = ({
   color?: ColorRepresentation;
   numBoids: number;
 }) => {
-  const boidVertices = arrayNode(unpackFrontFaceVertices(baseMesh.vertices), "vec3");
-  const faceVertexCount = uint(3);
+  const boidVertices = arrayNode(
+    unpackFrontFaceVertices(baseMesh.vertices),
+    "vec3",
+  );
   const vertexCount = numBoids * 3;
   const material = new BoidMeshBasicNodeMaterial2d({
     color,
@@ -101,21 +88,25 @@ export const createBoidGpuDeformMesh2d = ({
   });
 
   material.vertexNode = Fn(() => {
-    const boidIndex = (vertexIndex as any).div(faceVertexCount).toVar("boidIndex");
-    const localVertexIndex = (vertexIndex as any)
-      .sub(boidIndex.mul(faceVertexCount))
-      .toVar("localVertexIndex");
-    const boid: any = boids.element(boidIndex);
-    const position: any = boid.get("pos");
-    const localPosition: any = (rotateByVelocity2d(
-      boidVertices.element(localVertexIndex).mul(0.1),
-      boid.get("vel"),
-    ) as any).add(vec3(position.x, position.y, 0));
+    const instanceId = vertexIndex.div(3).toVar();
+    const vertexId = vertexIndex.sub(instanceId.mul(3)).toVar();
+    const boid = boids.element(instanceId);
+    const angle = atan(boid.get("vel").x, boid.get("vel").y).negate();
+    const pos = boidVertices.element(vertexId).mul(0.1);
+    const rotated = vec2(
+      pos.x.mul(angle.cos()).sub(pos.y.mul(angle.sin())),
+      pos.x.mul(angle.sin()).add(pos.y.mul(angle.cos())),
+    );
 
-    return cameraProjectionMatrix.mul(modelViewMatrix).mul(vec4(localPosition, 1));
+    return cameraProjectionMatrix
+      .mul(modelViewMatrix)
+      .mul(vec4(rotated.add(boid.get("pos")), 0, 1));
   })();
 
-  const mesh = new Mesh(createPlaceholderGeometry(vertexCount, boundRadius), material);
+  const mesh = new Mesh(
+    createPlaceholderGeometry(vertexCount, boundRadius),
+    material,
+  );
   mesh.frustumCulled = false;
 
   return mesh;
