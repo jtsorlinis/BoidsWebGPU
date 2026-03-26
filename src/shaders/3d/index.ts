@@ -9,6 +9,7 @@ import boid3dVertex from "./boid3dVertex.wgsl?raw";
 import boid3dFragment from "./boid3dFragment.wgsl?raw";
 import addSums3d from "./compute/addSums3d.wgsl?raw";
 import boids3d from "./compute/boids3d.wgsl?raw";
+import buildInstanceMatrices3d from "./compute/buildInstanceMatrices3d.wgsl?raw";
 import clearGrid3d from "./compute/clearGrid3d.wgsl?raw";
 import generateBoids3d from "./compute/generateBoids3d.wgsl?raw";
 import prefixSum3d from "./compute/prefixSum3d.wgsl?raw";
@@ -55,6 +56,19 @@ export const createComputeShaders3d = (engine: WebGPUEngine) => {
         boids: { group: 0, binding: 1 },
         boidsIn: { group: 0, binding: 2 },
         gridOffsets: { group: 0, binding: 3 },
+      },
+    }
+  );
+
+  const buildInstanceMatricesComputeShader = new ComputeShader(
+    "buildInstanceMatrices",
+    engine,
+    { computeSource: buildInstanceMatrices3d },
+    {
+      bindingsMapping: {
+        params: { group: 0, binding: 0 },
+        boids: { group: 0, binding: 1 },
+        instanceMatrices: { group: 0, binding: 2 },
       },
     }
   );
@@ -143,6 +157,7 @@ export const createComputeShaders3d = (engine: WebGPUEngine) => {
   return {
     generateBoidsComputeShader,
     boidComputeShader,
+    buildInstanceMatricesComputeShader,
     clearGridComputeShader,
     updateGridComputeShader,
     prefixSumComputeShader,
