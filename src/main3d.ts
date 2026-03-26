@@ -34,6 +34,21 @@ type BoidTemplateMesh = {
   vertices: Float32Array;
 };
 
+const packVec4Data = (data: Float32Array) => {
+  const vertexCount = data.length / 3;
+  const packed = new Float32Array(vertexCount * 4);
+
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const source = vertex * 3;
+    const target = vertex * 4;
+    packed[target] = data[source];
+    packed[target + 1] = data[source + 1];
+    packed[target + 2] = data[source + 2];
+  }
+
+  return packed;
+};
+
 const getRenderMeshData = (mesh: BoidTemplateMesh) => {
   const vertexCount = mesh.vertices.length / 4;
   const triangleCount = vertexCount / 3;
@@ -182,7 +197,7 @@ export const boids3d = async () => {
   const {
     generateBoidsComputeShader,
     boidComputeShader,
-    buildInstanceMatricesComputeShader,
+    buildRenderBuffersComputeShader,
     clearGridComputeShader,
     updateGridComputeShader,
     prefixSumComputeShader,
@@ -198,9 +213,13 @@ export const boids3d = async () => {
   let gridOffsetsBuffer2: StorageBuffer;
   let gridSumsBuffer: StorageBuffer;
   let gridSumsBuffer2: StorageBuffer;
-  let instanceMatricesBuffer: StorageBuffer;
+  let templatePositionsBuffer: StorageBuffer;
+  let templateNormalsBuffer: StorageBuffer;
+  let renderPositionsBuffer: StorageBuffer;
+  let renderNormalsBuffer: StorageBuffer;
   let gridTotalCells: number;
   let blocks: number;
+  let renderVertexCount: number;
   let boidMesh: Mesh;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
@@ -225,6 +244,7 @@ export const boids3d = async () => {
   params.addUniform("divider", 1);
   params.addUniform("rngSeed", 1);
   params.addUniform("blocks", 1);
+  params.addUniform("verticesPerBoid", 1);
 
   const setup = () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
@@ -262,12 +282,6 @@ export const boids3d = async () => {
     // Boids
     boidsComputeBuffer = new StorageBuffer(engine, numBoids * 32);
     boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 32);
-    instanceMatricesBuffer = new StorageBuffer(
-      engine,
-      numBoids * 16 * 4,
-      Constants.BUFFER_CREATIONFLAG_VERTEX |
-        Constants.BUFFER_CREATIONFLAG_READWRITE,
-    );
 
     // Scene lighting and shadow receiver
     const sun = new DirectionalLight(
@@ -327,50 +341,61 @@ export const boids3d = async () => {
 
     // Create boid mesh
     const renderMesh = getRenderMeshData(triangleMesh);
-    boidMesh = new Mesh("boids", scene);
-    boidMesh.setVerticesData(VertexBuffer.PositionKind, renderMesh.positions);
-    boidMesh.setVerticesData(VertexBuffer.NormalKind, renderMesh.normals);
-    boidMesh.isUnIndexed = true;
-    boidMesh.forcedInstanceCount = numBoids;
-    boidMesh.receiveShadows = true;
+    const verticesPerBoid = renderMesh.positions.length / 3;
+    const totalVertices = verticesPerBoid * numBoids;
+    renderVertexCount = totalVertices;
+    templatePositionsBuffer = new StorageBuffer(
+      engine,
+      verticesPerBoid * 4 * 4,
+    );
+    templateNormalsBuffer = new StorageBuffer(engine, verticesPerBoid * 4 * 4);
+    renderPositionsBuffer = new StorageBuffer(
+      engine,
+      totalVertices * 4 * 4,
+      Constants.BUFFER_CREATIONFLAG_VERTEX |
+        Constants.BUFFER_CREATIONFLAG_READWRITE,
+    );
+    renderNormalsBuffer = new StorageBuffer(
+      engine,
+      totalVertices * 4 * 4,
+      Constants.BUFFER_CREATIONFLAG_VERTEX |
+        Constants.BUFFER_CREATIONFLAG_READWRITE,
+    );
+    templatePositionsBuffer.update(packVec4Data(renderMesh.positions));
+    templateNormalsBuffer.update(packVec4Data(renderMesh.normals));
 
-    const matrixBuffer = instanceMatricesBuffer.getBuffer();
+    boidMesh = new Mesh("boids", scene);
+    boidMesh.isUnIndexed = true;
     boidMesh.setVerticesBuffer(
-      new VertexBuffer(engine, matrixBuffer, "world0", {
-        instanced: true,
-        offset: 0,
-        size: 4,
-        stride: 16,
-        takeBufferOwnership: false,
-      }),
+      new VertexBuffer(
+        engine,
+        renderPositionsBuffer.getBuffer(),
+        VertexBuffer.PositionKind,
+        {
+          offset: 0,
+          size: 3,
+          stride: 4,
+          takeBufferOwnership: false,
+        },
+      ),
+      false,
+      totalVertices,
     );
     boidMesh.setVerticesBuffer(
-      new VertexBuffer(engine, matrixBuffer, "world1", {
-        instanced: true,
-        offset: 4,
-        size: 4,
-        stride: 16,
-        takeBufferOwnership: false,
-      }),
+      new VertexBuffer(
+        engine,
+        renderNormalsBuffer.getBuffer(),
+        VertexBuffer.NormalKind,
+        {
+          offset: 0,
+          size: 3,
+          stride: 4,
+          takeBufferOwnership: false,
+        },
+      ),
+      false,
     );
-    boidMesh.setVerticesBuffer(
-      new VertexBuffer(engine, matrixBuffer, "world2", {
-        instanced: true,
-        offset: 8,
-        size: 4,
-        stride: 16,
-        takeBufferOwnership: false,
-      }),
-    );
-    boidMesh.setVerticesBuffer(
-      new VertexBuffer(engine, matrixBuffer, "world3", {
-        instanced: true,
-        offset: 12,
-        size: 4,
-        stride: 16,
-        takeBufferOwnership: false,
-      }),
-    );
+    boidMesh.receiveShadows = true;
 
     const boidMaterial = new PBRMaterial("boidMat", scene);
     boidMaterial.albedoColor = new Color3(1, 0.02, 0);
@@ -411,6 +436,7 @@ export const boids3d = async () => {
     params.updateUInt("gridTotalCells", gridTotalCells);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
     params.updateUInt("blocks", blocks);
+    params.updateUInt("verticesPerBoid", verticesPerBoid);
 
     params.update();
 
@@ -459,14 +485,26 @@ export const boids3d = async () => {
     boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
     boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
 
-    buildInstanceMatricesComputeShader.setUniformBuffer("params", params);
-    buildInstanceMatricesComputeShader.setStorageBuffer(
+    buildRenderBuffersComputeShader.setUniformBuffer("params", params);
+    buildRenderBuffersComputeShader.setStorageBuffer(
       "boids",
       boidsComputeBuffer,
     );
-    buildInstanceMatricesComputeShader.setStorageBuffer(
-      "instanceMatrices",
-      instanceMatricesBuffer,
+    buildRenderBuffersComputeShader.setStorageBuffer(
+      "templatePositions",
+      templatePositionsBuffer,
+    );
+    buildRenderBuffersComputeShader.setStorageBuffer(
+      "templateNormals",
+      templateNormalsBuffer,
+    );
+    buildRenderBuffersComputeShader.setStorageBuffer(
+      "renderPositions",
+      renderPositionsBuffer,
+    );
+    buildRenderBuffersComputeShader.setStorageBuffer(
+      "renderNormals",
+      renderNormalsBuffer,
     );
 
     // Generate boids on GPU
@@ -488,7 +526,10 @@ export const boids3d = async () => {
     gridOffsetsBuffer2.dispose();
     gridSumsBuffer.dispose();
     gridSumsBuffer2.dispose();
-    instanceMatricesBuffer.dispose();
+    templatePositionsBuffer.dispose();
+    templateNormalsBuffer.dispose();
+    renderPositionsBuffer.dispose();
+    renderNormalsBuffer.dispose();
   };
 
   setup();
@@ -554,8 +595,8 @@ export const boids3d = async () => {
     addSumsComputeShader.dispatch(blocks, 1, 1);
     rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
     boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
-    buildInstanceMatricesComputeShader.dispatch(
-      Math.ceil(numBoids / blockSize),
+    buildRenderBuffersComputeShader.dispatch(
+      Math.ceil(renderVertexCount / blockSize),
       1,
       1,
     );

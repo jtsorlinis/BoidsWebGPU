@@ -60,6 +60,7 @@ export const setupIncludes = (blockSize: number) => {
       divider: u32,
       rngSeed: u32,
       blocks: u32,
+      verticesPerBoid: u32,
     };
 
     struct Boid3d {
