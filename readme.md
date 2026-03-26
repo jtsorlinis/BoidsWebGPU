@@ -1,10 +1,10 @@
-# 2D/3D Boids Flocking Simulation (Babylon.js/WebGPU)
+# 2D/3D Boids Flocking Simulation (Three.js/WebGPU)
 
 **See it here: https://jtsorlinis.github.io/BoidsWebGPU/**
 
 ---
 
-Boids simulation made with babylon.js and WebGPU, running on a compute shader this allows the simulation of millions of boids.
+Boids simulation made with Three.js and WebGPU, running on a compute shader this allows the simulation of millions of boids.
 
 The simulation uses a uniform spatial grid as an acceleration structure to determine nearest neighbours, as brute force method would cap out at around 50k entities even on GPU.
 

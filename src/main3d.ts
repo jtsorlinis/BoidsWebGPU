@@ -33,6 +33,7 @@ import {
 } from "three/tsl";
 import { createBoidGpuDeformMesh } from "./materials/boidGpuDeformPlugin";
 import { triangleMesh } from "./meshes/triangleMesh";
+import { requestWebGPUDeviceWithMaxLimits } from "./utils/webgpu";
 
 const EDGE_MARGIN = 0.5;
 const MAX_SPEED = 2;
@@ -782,6 +783,7 @@ export const boids3d = async () => {
       alpha: false,
       antialias: true,
       canvas,
+      device: await requestWebGPUDeviceWithMaxLimits(),
     });
 
     nextRenderer.setPixelRatio(window.devicePixelRatio);
