@@ -16,8 +16,17 @@ fn rand_pcg(min: f32, max: f32) -> f32 {
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   let index : u32 = GlobalInvocationID.x;
+
+  if (index >= params.numBoids) {
+    return;
+  }
+
   rngState = params.rngSeed + index;
 
   boids[index].pos = vec3<f32>(rand_pcg(-params.xBound,params.xBound), rand_pcg(-params.yBound,params.yBound), rand_pcg(-params.zBound,params.zBound));
-  boids[index].vel = vec3<f32>(rand_pcg(-1,1), rand_pcg(-1,1), rand_pcg(-1,1));
+  boids[index].vel = vec3<f32>(
+    rand_pcg(-params.maxSpeed, params.maxSpeed),
+    rand_pcg(-params.maxSpeed, params.maxSpeed),
+    rand_pcg(-params.maxSpeed, params.maxSpeed),
+  );
 }

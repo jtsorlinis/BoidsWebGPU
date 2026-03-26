@@ -17,7 +17,11 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>,
   var pout: u32 = 0;
   var pin: u32 = 1;
 
-  temp[localID] = gridOffsetsIn[globalID];
+  if (globalID < params.gridTotalCells) {
+    temp[localID] = gridOffsetsIn[globalID];
+  } else {
+    temp[localID] = 0u;
+  }
   workgroupBarrier();
 
   for (var offset: u32 = 1; offset < blockSize; offset *= 2) {
@@ -36,7 +40,13 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>,
       return;
   }
 
-  gridOffsetsOut[globalID] = temp[pout * blockSize + localID];
+  let writeIdx = pout * blockSize + localID;
+  var exclusiveVal = 0u;
+  if (localID > 0u) {
+    exclusiveVal = temp[writeIdx - 1u];
+  }
+
+  gridOffsetsOut[globalID] = exclusiveVal;
   if (localID == 0) {
       gridSums[groupID] = temp[pout * blockSize + blockSize - 1];
   } 

@@ -3,7 +3,7 @@
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read_write> boids : array<Boid3d>;
 @binding(2) @group(0) var<storage, read> boidsIn : array<Boid3d>;
-@binding(3) @group(0) var<storage, read_write> gridOffsets : array<u32>;
+@binding(3) @group(0) var<storage, read> gridOffsets : array<u32>;
 
 fn getGridLocation(boid: Boid3d) -> vec3<u32> {
   let x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
@@ -26,14 +26,16 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>) {
   let cell = getGridID(gridXYZ);
   let visualRangeSq = params.visualRangeSq;
   let minDistanceSq = params.minDistanceSq;
-  let gridDimX = params.gridDimX;
   let zStep = params.gridDimX * params.gridDimY;
 
-  // Loop around cell
-  for (var z = cell - zStep; z <= cell + zStep; z += zStep) {
-    for (var y = z - gridDimX; y <= z + gridDimX; y += gridDimX) {
-      let start = gridOffsets[y - 2];
-      let end = gridOffsets[y + 1];
+  // Loop around own cell (3x3x3 neighborhood).
+  for (var z: i32 = -1; z <= 1; z += 1) {
+    for (var y: i32 = -1; y <= 1; y += 1) {
+      let gridIdx = u32(
+        i32(cell) + z * i32(zStep) + y * i32(params.gridDimX),
+      );
+      let start = gridOffsets[gridIdx - 1u];
+      let end = gridOffsets[gridIdx + 2u];
 
       for (var i = start; i < end; i += 1) {
         let other = boidsIn[i];
@@ -83,6 +85,10 @@ fn keepInBounds(boid: ptr<function, Boid3d>) {
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   let index : u32 = GlobalInvocationID.x;
+
+  if (index >= params.numBoids) {
+    return;
+  }
 
   var boid = boidsIn[index];
   

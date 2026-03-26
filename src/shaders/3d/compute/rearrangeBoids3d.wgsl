@@ -16,6 +16,6 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
 
   let gridID = grid[index].x;
   let cellOffset = grid[index].y;
-  let newIndex = gridOffsets[gridID] - 1 - cellOffset;
+  let newIndex = gridOffsets[gridID] + cellOffset;
   boidsOut[newIndex] = boidsIn[index];
 }

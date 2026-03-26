@@ -10,7 +10,7 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>, @builtin(
   let globalID : u32 = GlobalInvocationID.x;
   let groupID : u32 = GroupID.x;
 
- if (groupID == 0 || globalID > params.gridTotalCells) {
+ if (groupID == 0u || globalID >= params.gridTotalCells) {
     return;
   }
   gridOffsetsOut[globalID] += gridSumsIn[groupID - 1];

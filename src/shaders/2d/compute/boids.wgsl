@@ -3,7 +3,7 @@
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read_write> boids : array<Boid>;
 @binding(2) @group(0) var<storage, read> boidsIn : array<Boid>;
-@binding(3) @group(0) var<storage, read_write> gridOffsets : array<u32>;
+@binding(3) @group(0) var<storage, read> gridOffsets : array<u32>;
 
 fn getGridLocation(boid: Boid) -> vec2<u32> {
   let x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
@@ -26,10 +26,11 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
   let visualRangeSq = params.visualRangeSq;
   let minDistanceSq = params.minDistanceSq;
 
-  // Loop around cell
-  for(var y = cell - params.gridDimX; y <= cell + params.gridDimX; y += params.gridDimX) {
-    let start = gridOffsets[y - 2];
-    let end = gridOffsets[y + 1];
+  // Loop around own cell.
+  for (var row: i32 = -1; row <= 1; row += 1) {
+    let y = u32(i32(cell) + row * i32(params.gridDimX));
+    let start = gridOffsets[y - 1u];
+    let end = gridOffsets[y + 2u];
 
     for (var i = start; i < end; i += 1) {
       let other = boidsIn[i];
@@ -85,6 +86,10 @@ fn avoidPredators(boid: ptr<function, Boid>) {
 @compute @workgroup_size(blockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   let index : u32 = GlobalInvocationID.x;
+
+  if (index >= params.numBoids) {
+    return;
+  }
 
   var boid = boidsIn[index];
   

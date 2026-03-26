@@ -572,7 +572,7 @@ export const boids3d = async () => {
     prefixSumComputeShader.dispatch(blocks, 1, 1);
 
     let swap = false;
-    for (let d = 1; d < gridTotalCells; d *= 2) {
+    for (let d = 1; d < blocks; d *= 2) {
       sumBucketsComputeShader.setStorageBuffer(
         "gridSumsIn",
         swap ? gridSumsBuffer2 : gridSumsBuffer,
