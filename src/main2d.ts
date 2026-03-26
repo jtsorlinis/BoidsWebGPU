@@ -25,7 +25,7 @@ export const boids2d = async () => {
   const boidText = document.getElementById("boidText") as HTMLElement;
   const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
   const avoidToggle = document.getElementById(
-    "avoidToggle"
+    "avoidToggle",
   ) as HTMLInputElement;
   avoidToggle.checked = false;
 
@@ -99,6 +99,7 @@ export const boids2d = async () => {
   const setup = () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
     scene = new Scene(engine);
+    scene.clearColor.fromHexString("#314D79");
     camera = new FreeCamera("camera1", new Vector3(0, 0, -5), scene);
     camera.mode = 1;
     aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
@@ -139,7 +140,7 @@ export const boids2d = async () => {
     boidMesh.material = boidMat;
     boidMesh.buildBoundingInfo(
       new Vector3(-xBound, -yBound, 0),
-      new Vector3(xBound, yBound, 0)
+      new Vector3(xBound, yBound, 0),
     );
 
     params.updateUInt("numBoids", numBoids);
@@ -180,7 +181,7 @@ export const boids2d = async () => {
     prefixSumComputeShader.setUniformBuffer("params", params);
     prefixSumComputeShader.setStorageBuffer(
       "gridOffsetsOut",
-      gridOffsetsBuffer2
+      gridOffsetsBuffer2,
     );
     prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
     prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
@@ -194,12 +195,12 @@ export const boids2d = async () => {
     rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
     rearrangeBoidsComputeShader.setStorageBuffer(
       "gridOffsets",
-      gridOffsetsBuffer2
+      gridOffsetsBuffer2,
     );
     rearrangeBoidsComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer);
     rearrangeBoidsComputeShader.setStorageBuffer(
       "boidsOut",
-      boidsComputeBuffer2
+      boidsComputeBuffer2,
     );
 
     boidComputeShader.setUniformBuffer("params", params);
@@ -213,7 +214,7 @@ export const boids2d = async () => {
     generateBoidsComputeShader.dispatchWhenReady(
       Math.ceil(numBoids / blockSize),
       1,
-      1
+      1,
     );
   };
 
@@ -311,11 +312,11 @@ export const boids2d = async () => {
     for (let d = 1; d < gridTotalCells; d *= 2) {
       sumBucketsComputeShader.setStorageBuffer(
         "gridSumsIn",
-        swap ? gridSumsBuffer2 : gridSumsBuffer
+        swap ? gridSumsBuffer2 : gridSumsBuffer,
       );
       sumBucketsComputeShader.setStorageBuffer(
         "gridSumsOut",
-        swap ? gridSumsBuffer : gridSumsBuffer2
+        swap ? gridSumsBuffer : gridSumsBuffer2,
       );
 
       params.updateUInt("divider", d);
@@ -326,7 +327,7 @@ export const boids2d = async () => {
 
     addSumsComputeShader.setStorageBuffer(
       "gridSumsIn",
-      swap ? gridSumsBuffer2 : gridSumsBuffer
+      swap ? gridSumsBuffer2 : gridSumsBuffer,
     );
     addSumsComputeShader.dispatch(blocks, 1, 1);
     rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
