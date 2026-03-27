@@ -1,18 +1,19 @@
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { Scalar, WebGPUEngine } from "@babylonjs/core";
 import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
-import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
+import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { Layer } from "@babylonjs/core/Layers/layer";
 import { setupIncludes } from "./shaders";
-import { triangleMesh } from "./meshes/triangleMesh";
-import { createBoidMaterial, createComputeShaders } from "./shaders/2d";
+import { createComputeShaders } from "./shaders/2d";
 
 export const boids2d = async () => {
   let numBoids = 32;
+  const clearBlockSize = 8;
   const edgeMargin = 0.5;
   const maxSpeed = 2;
   const visualRange = 0.5;
@@ -50,6 +51,7 @@ export const boids2d = async () => {
   let camera: FreeCamera;
 
   const {
+    clearRasterComputeShader,
     generateBoidsComputeShader,
     boidComputeShader,
     clearGridComputeShader,
@@ -58,6 +60,7 @@ export const boids2d = async () => {
     sumBucketsComputeShader,
     addSumsComputeShader,
     rearrangeBoidsComputeShader,
+    renderBoidsComputeShader,
   } = createComputeShaders(engine);
 
   let boidsComputeBuffer: StorageBuffer;
@@ -69,8 +72,10 @@ export const boids2d = async () => {
   let gridSumsBuffer2: StorageBuffer;
   let gridTotalCells: number;
   let blocks: number;
-  let boidMat: ShaderMaterial;
-  let boidVerticesBuffer: StorageBuffer;
+  let rasterLayer: Layer;
+  let renderTexture: RawTexture | null = null;
+  let renderTextureWidth = 0;
+  let renderTextureHeight = 0;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
   params.addUniform("numBoids", 1);
@@ -95,6 +100,53 @@ export const boids2d = async () => {
   params.addUniform("avoidMouse", 1);
   params.addUniform("zoom", 1);
   params.addFloat2("mousePos", 0, 0);
+  params.addUniform("renderWidth", 1);
+  params.addUniform("renderHeight", 1);
+  params.addFloat2("viewportHalfSize", 0, 0);
+  params.addFloat2("cameraPos", 0, 0);
+
+  const syncRenderParams = () => {
+    aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
+    params.updateUInt("renderWidth", engine.getRenderWidth());
+    params.updateUInt("renderHeight", engine.getRenderHeight());
+    params.updateFloat2("viewportHalfSize", orthoSize * aspectRatio, orthoSize);
+    params.updateFloat2("cameraPos", camera.position.x, camera.position.y);
+  };
+
+  const ensureRenderTexture = () => {
+    const width = engine.getRenderWidth();
+    const height = engine.getRenderHeight();
+    if (
+      renderTexture &&
+      renderTextureWidth === width &&
+      renderTextureHeight === height
+    ) {
+      return;
+    }
+
+    const nextTexture = RawTexture.CreateRGBAStorageTexture(
+      null,
+      width,
+      height,
+      scene,
+      false,
+      false,
+      Texture.NEAREST_NEAREST,
+    );
+    nextTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
+    nextTexture.wrapV = Texture.CLAMP_ADDRESSMODE;
+
+    const previousTexture = renderTexture;
+    renderTexture = nextTexture;
+    renderTextureWidth = width;
+    renderTextureHeight = height;
+
+    rasterLayer.texture = renderTexture;
+    clearRasterComputeShader.setStorageTexture("renderTarget", renderTexture);
+    renderBoidsComputeShader.setStorageTexture("renderTarget", renderTexture);
+
+    previousTexture?.dispose();
+  };
 
   const setup = () => {
     boidText.innerHTML = `Boids: ${numBoids}`;
@@ -122,26 +174,14 @@ export const boids2d = async () => {
     boidsComputeBuffer = new StorageBuffer(engine, numBoids * 16);
     boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 16);
 
-    // Load texture and materials
-    boidMat = createBoidMaterial(scene);
-    boidMat.setStorageBuffer("boids", boidsComputeBuffer);
-
-    // Create boid mesh
-    const boidMesh = new Mesh("custom", scene);
-    boidMesh.setVerticesData(VertexBuffer.PositionKind, [0]);
-    boidMesh.isUnIndexed = true;
-    boidMesh.subMeshes[0].verticesCount = numBoids * 3;
-
-    const verts = triangleMesh.vertices.slice(0, 12); // Only need front face
-    boidVerticesBuffer = new StorageBuffer(engine, verts.byteLength);
-    boidVerticesBuffer.update(verts);
-    boidMat.setStorageBuffer("boidVertices", boidVerticesBuffer);
-
-    boidMesh.material = boidMat;
-    boidMesh.buildBoundingInfo(
-      new Vector3(-xBound, -yBound, 0),
-      new Vector3(xBound, yBound, 0),
+    rasterLayer = new Layer(
+      "rasterLayer",
+      null,
+      scene,
+      false,
+      new Color4(1, 1, 1, 1),
     );
+    rasterLayer.texture = null;
 
     params.updateUInt("numBoids", numBoids);
     params.updateFloat("xBound", xBound);
@@ -160,6 +200,7 @@ export const boids2d = async () => {
     params.updateUInt("gridTotalCells", gridTotalCells);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
     params.updateUInt("blocks", blocks);
+    syncRenderParams();
 
     params.update();
 
@@ -172,6 +213,8 @@ export const boids2d = async () => {
 
     clearGridComputeShader.setUniformBuffer("params", params);
     clearGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
+
+    clearRasterComputeShader.setUniformBuffer("params", params);
 
     updateGridComputeShader.setUniformBuffer("params", params);
     updateGridComputeShader.setStorageBuffer("grid", gridBuffer);
@@ -208,6 +251,10 @@ export const boids2d = async () => {
     boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
     boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
 
+    renderBoidsComputeShader.setUniformBuffer("params", params);
+    renderBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
+    ensureRenderTexture();
+
     // Generate boids on GPU
     generateBoidsComputeShader.setUniformBuffer("params", params);
     generateBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
@@ -219,6 +266,7 @@ export const boids2d = async () => {
   };
 
   const disposeAll = () => {
+    renderTexture?.dispose();
     scene.dispose();
     boidsComputeBuffer.dispose();
     boidsComputeBuffer2.dispose();
@@ -227,7 +275,9 @@ export const boids2d = async () => {
     gridOffsetsBuffer2.dispose();
     gridSumsBuffer.dispose();
     gridSumsBuffer2.dispose();
-    boidVerticesBuffer.dispose();
+    renderTexture = null;
+    renderTextureWidth = 0;
+    renderTextureHeight = 0;
   };
 
   setup();
@@ -240,12 +290,16 @@ export const boids2d = async () => {
   };
 
   canvas.onpointermove = (e) => {
+    const rect = canvas.getBoundingClientRect();
     const mouseX =
-      (e.x / canvas.width - 0.5) * orthoSize * 2 * aspectRatio +
+      ((e.clientX - rect.left) / rect.width - 0.5) *
+        orthoSize *
+        2 *
+        aspectRatio +
       camera.position.x;
     const mouseY =
-      -(e.y / canvas.height - 0.5) * orthoSize * 2 + camera.position.y;
-    boidMat.setVector2("mousePos", new Vector2(mouseX, mouseY));
+      -((e.clientY - rect.top) / rect.height - 0.5) * orthoSize * 2 +
+      camera.position.y;
     params.updateFloat2("mousePos", mouseX, mouseY);
     params.update();
 
@@ -279,7 +333,7 @@ export const boids2d = async () => {
 
   avoidToggle.onclick = () => {
     params.updateUInt("avoidMouse", avoidToggle.checked ? 1 : 0);
-    boidMat.setUInt("avoidMouse", avoidToggle.checked ? 1 : 0);
+    params.update();
   };
 
   const smoothZoom = () => {
@@ -293,15 +347,16 @@ export const boids2d = async () => {
     }
   };
 
-  engine.runRenderLoop(async () => {
+  engine.runRenderLoop(() => {
     const fps = engine.getFps();
     fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
     smoothZoom();
+    ensureRenderTexture();
 
     params.updateFloat("dt", engine.getDeltaTime() / 1000);
     params.updateFloat("zoom", orthoSize / 3);
+    syncRenderParams();
     params.update();
-    boidMat.setFloat("zoom", orthoSize / 3);
 
     clearGridComputeShader.dispatch(blocks, 1, 1);
     updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
@@ -333,6 +388,12 @@ export const boids2d = async () => {
     rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
     boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    clearRasterComputeShader.dispatch(
+      Math.ceil(renderTextureWidth / clearBlockSize),
+      Math.ceil(renderTextureHeight / clearBlockSize),
+      1,
+    );
+    renderBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
     scene.render();
   });
 

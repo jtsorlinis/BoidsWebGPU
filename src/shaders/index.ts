@@ -27,6 +27,10 @@ export const setupIncludes = (blockSize: number) => {
       avoidMouse: u32,
       zoom: f32,
       mousePos: vec2<f32>,
+      renderWidth: u32,
+      renderHeight: u32,
+      viewportHalfSize: vec2<f32>,
+      cameraPos: vec2<f32>,
     };
 
     struct Boid {
