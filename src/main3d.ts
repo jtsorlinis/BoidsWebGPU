@@ -192,9 +192,12 @@ export const boids3d = async () => {
   const boidLimit = (blockSize * maxBlocks) / 4;
   boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
-  let scene: Scene;
-  let spaceBounds: number;
-  let camera: UniversalCamera;
+  let scene!: Scene;
+  let spaceBounds = 0;
+  let camera!: UniversalCamera;
+  let shadowGenerator!: ShadowGenerator;
+  let ground!: Mesh;
+  let boidMaterial!: PBRMaterial;
 
   const {
     generateBoidsComputeShader,
@@ -208,21 +211,21 @@ export const boids3d = async () => {
     rearrangeBoidsComputeShader,
   } = createComputeShaders3d(engine);
 
-  let boidsComputeBuffer: StorageBuffer;
-  let boidsComputeBuffer2: StorageBuffer;
-  let gridBuffer: StorageBuffer;
-  let gridOffsetsBuffer: StorageBuffer;
-  let gridOffsetsBuffer2: StorageBuffer;
-  let gridSumsBuffer: StorageBuffer;
-  let gridSumsBuffer2: StorageBuffer;
-  let templatePositionsBuffer: StorageBuffer;
-  let templateNormalsBuffer: StorageBuffer;
-  let renderPositionsBuffer: StorageBuffer;
-  let renderNormalsBuffer: StorageBuffer;
-  let gridTotalCells: number;
-  let blocks: number;
-  let renderVertexCount: number;
-  let boidMesh: Mesh;
+  let boidsComputeBuffer: StorageBuffer | null = null;
+  let boidsComputeBuffer2: StorageBuffer | null = null;
+  let gridBuffer: StorageBuffer | null = null;
+  let gridOffsetsBuffer: StorageBuffer | null = null;
+  let gridOffsetsBuffer2: StorageBuffer | null = null;
+  let gridSumsBuffer: StorageBuffer | null = null;
+  let gridSumsBuffer2: StorageBuffer | null = null;
+  let templatePositionsBuffer: StorageBuffer | null = null;
+  let templateNormalsBuffer: StorageBuffer | null = null;
+  let renderPositionsBuffer: StorageBuffer | null = null;
+  let renderNormalsBuffer: StorageBuffer | null = null;
+  let gridTotalCells = 0;
+  let blocks = 0;
+  let renderVertexCount = 0;
+  let boidMesh: Mesh | null = null;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
   params.addUniform("numBoids", 1);
@@ -248,8 +251,7 @@ export const boids3d = async () => {
   params.addUniform("blocks", 1);
   params.addUniform("verticesPerBoid", 1);
 
-  const setup = () => {
-    boidText.innerHTML = `Boids: ${numBoids}`;
+  const createStaticScene = () => {
     scene = new Scene(engine);
     scene.clearColor = new Color4(
       ZENITH_SKY[0],
@@ -268,22 +270,6 @@ export const boids3d = async () => {
     camera.keysUpward = [69];
     camera.keysDownward = [81];
     camera.attachControl();
-    spaceBounds = Math.max(1, Math.pow(numBoids, 1 / 3) / 7.5 + edgeMargin);
-    camera.position.set(0, 0, -spaceBounds * 3.8);
-
-    const xBound = 2 * spaceBounds - edgeMargin;
-    const yBound = spaceBounds - edgeMargin;
-    const zBound = 2 * spaceBounds - edgeMargin;
-
-    const gridDimX = Math.floor((xBound * 2) / visualRange) + 20;
-    const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
-    const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
-    gridTotalCells = gridDimX * gridDimY * gridDimZ;
-    blocks = Math.ceil(gridTotalCells / blockSize);
-
-    // Boids
-    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 32);
-    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 32);
 
     // Scene lighting and shadow receiver
     const sun = new DirectionalLight(
@@ -307,7 +293,7 @@ export const boids3d = async () => {
     fillLight.groundColor = new Color3(0.047, 0.043, 0.035);
     fillLight.intensity = FILL_LIGHT_INTENSITY;
 
-    const shadowGenerator = new ShadowGenerator(SHADOW_MAP_SIZE, sun);
+    shadowGenerator = new ShadowGenerator(SHADOW_MAP_SIZE, sun);
     shadowGenerator.usePoissonSampling = true;
     shadowGenerator.bias = 0.05;
     shadowGenerator.normalBias = 0.4;
@@ -324,15 +310,14 @@ export const boids3d = async () => {
       skybox.material.disableDepthWrite = true;
     }
 
-    const ground = MeshBuilder.CreateGround(
+    ground = MeshBuilder.CreateGround(
       "ground",
       {
-        width: spaceBounds * 4,
-        height: spaceBounds * 4,
+        width: 1,
+        height: 1,
       },
       scene,
     );
-    ground.position.y = -spaceBounds - 1;
     ground.receiveShadows = true;
 
     const groundMaterial = new PBRMaterial("groundMat", scene);
@@ -340,6 +325,76 @@ export const boids3d = async () => {
     groundMaterial.metallic = 0;
     groundMaterial.roughness = 0.5;
     ground.material = groundMaterial;
+
+    boidMaterial = new PBRMaterial("boidMat", scene);
+    boidMaterial.albedoColor = new Color3(1, 0.02, 0);
+    boidMaterial.metallic = 0;
+    boidMaterial.roughness = 0.5;
+  };
+
+  const disposeSimulationResources = () => {
+    if (boidMesh) {
+      shadowGenerator.removeShadowCaster(boidMesh, false);
+      boidMesh.dispose();
+      boidMesh = null;
+    }
+
+    boidsComputeBuffer?.dispose();
+    boidsComputeBuffer2?.dispose();
+    gridBuffer?.dispose();
+    gridOffsetsBuffer?.dispose();
+    gridOffsetsBuffer2?.dispose();
+    gridSumsBuffer?.dispose();
+    gridSumsBuffer2?.dispose();
+    templatePositionsBuffer?.dispose();
+    templateNormalsBuffer?.dispose();
+    renderPositionsBuffer?.dispose();
+    renderNormalsBuffer?.dispose();
+
+    boidsComputeBuffer = null;
+    boidsComputeBuffer2 = null;
+    gridBuffer = null;
+    gridOffsetsBuffer = null;
+    gridOffsetsBuffer2 = null;
+    gridSumsBuffer = null;
+    gridSumsBuffer2 = null;
+    templatePositionsBuffer = null;
+    templateNormalsBuffer = null;
+    renderPositionsBuffer = null;
+    renderNormalsBuffer = null;
+    renderVertexCount = 0;
+  };
+
+  const rebuildSimulation = (resetCamera: boolean) => {
+    disposeSimulationResources();
+    boidText.innerHTML = `Boids: ${numBoids}`;
+
+    spaceBounds = Math.max(1, Math.pow(numBoids, 1 / 3) / 7.5 + edgeMargin);
+    if (resetCamera) {
+      camera.position.set(0, 0, -spaceBounds * 3.8);
+      camera.rotation.x = 0;
+      camera.rotation.y = 0;
+      camera.rotation.z = 0;
+      camera.cameraRotation.x = 0;
+      camera.cameraRotation.y = 0;
+    }
+    ground.scaling.x = spaceBounds * 4;
+    ground.scaling.z = spaceBounds * 4;
+    ground.position.y = -spaceBounds - 1;
+
+    const xBound = 2 * spaceBounds - edgeMargin;
+    const yBound = spaceBounds - edgeMargin;
+    const zBound = 2 * spaceBounds - edgeMargin;
+
+    const gridDimX = Math.floor((xBound * 2) / visualRange) + 20;
+    const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
+    const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
+    gridTotalCells = gridDimX * gridDimY * gridDimZ;
+    blocks = Math.ceil(gridTotalCells / blockSize);
+
+    // Boids
+    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 32);
+    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 32);
 
     // Create boid mesh
     const renderMesh = getRenderMeshData(triangleMesh);
@@ -398,13 +453,8 @@ export const boids3d = async () => {
       false,
     );
     boidMesh.receiveShadows = true;
-
-    const boidMaterial = new PBRMaterial("boidMat", scene);
-    boidMaterial.albedoColor = new Color3(1, 0.02, 0);
-    boidMaterial.metallic = 0;
-    boidMaterial.roughness = 0.5;
     boidMesh.material = boidMaterial;
-    shadowGenerator.addShadowCaster(boidMesh);
+    shadowGenerator.addShadowCaster(boidMesh, false);
 
     boidMesh.buildBoundingInfo(
       new Vector3(
@@ -519,30 +569,28 @@ export const boids3d = async () => {
     );
   };
 
+  let disposed = false;
   const disposeAll = () => {
+    if (disposed) {
+      return;
+    }
+
+    disposed = true;
+    disposeSimulationResources();
+    params.dispose();
     scene.dispose();
-    boidsComputeBuffer.dispose();
-    boidsComputeBuffer2.dispose();
-    gridBuffer.dispose();
-    gridOffsetsBuffer.dispose();
-    gridOffsetsBuffer2.dispose();
-    gridSumsBuffer.dispose();
-    gridSumsBuffer2.dispose();
-    templatePositionsBuffer.dispose();
-    templateNormalsBuffer.dispose();
-    renderPositionsBuffer.dispose();
-    renderNormalsBuffer.dispose();
   };
 
-  setup();
+  createStaticScene();
+  rebuildSimulation(true);
+  engine.onDisposeObservable.add(disposeAll);
 
   boidSlider.oninput = () => {
     numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
     if (numBoids > boidLimit) {
       numBoids = boidLimit;
     }
-    disposeAll();
-    setup();
+    rebuildSimulation(true);
   };
 
   canvas.onpointerdown = () => {
@@ -562,6 +610,18 @@ export const boids3d = async () => {
   };
 
   engine.runRenderLoop(() => {
+    if (
+      !boidsComputeBuffer ||
+      !boidsComputeBuffer2 ||
+      !gridBuffer ||
+      !gridOffsetsBuffer ||
+      !gridOffsetsBuffer2 ||
+      !gridSumsBuffer ||
+      !gridSumsBuffer2
+    ) {
+      return;
+    }
+
     const fps = engine.getFps();
     fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
 
