@@ -1,0 +1,1 @@
+import{t as e}from"./shaderStore-B3CsX8Dt.js";var t=`kernelBlurVaryingDeclaration`,n=`varying vec2 sampleCoord{X};`;e.IncludesShadersStore[t]||(e.IncludesShadersStore[t]=n);
