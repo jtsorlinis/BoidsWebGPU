@@ -1,7 +1,9 @@
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import { Constants } from "@babylonjs/core/Engines/constants";
+import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import "@babylonjs/core/Helpers/sceneHelpers";
-import { UniversalCamera, WebGPUEngine } from "@babylonjs/core";
+import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";

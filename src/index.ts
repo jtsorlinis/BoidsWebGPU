@@ -1,7 +1,5 @@
 import "./style.css";
-import { boids2d } from "./main2d";
-import { boids3d } from "./main3d";
-import { WebGPUEngine } from "@babylonjs/core";
+import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 
 let is3D = false;
 let engine: WebGPUEngine | null;
@@ -33,8 +31,10 @@ const startScene = async () => {
 
   boidSlider.valueAsNumber = 5;
   if (is3D) {
+    const { boids3d } = await import("./main3d");
     engine = await boids3d();
   } else {
+    const { boids2d } = await import("./main2d");
     engine = await boids2d();
   }
 };

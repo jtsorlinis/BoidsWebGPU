@@ -1,4 +1,6 @@
-import { ComputeShader, WebGPUEngine } from "@babylonjs/core";
+import "@babylonjs/core/Engines/WebGPU/Extensions/engine.computeShader";
+import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
+import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import addSums from "./compute/addSums.wgsl?raw";
 import clearRaster from "./compute/clearRaster.wgsl?raw";
 import clearGrid from "./compute/clearGrid.wgsl?raw";

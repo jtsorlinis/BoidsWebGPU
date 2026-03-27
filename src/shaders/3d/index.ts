@@ -1,4 +1,6 @@
-import { ComputeShader, WebGPUEngine } from "@babylonjs/core";
+import "@babylonjs/core/Engines/WebGPU/Extensions/engine.computeShader";
+import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
+import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import addSums3d from "./compute/addSums3d.wgsl?raw";
 import boids3d from "./compute/boids3d.wgsl?raw";
 import buildRenderBuffers3d from "./compute/buildRenderBuffers3d.wgsl?raw";
