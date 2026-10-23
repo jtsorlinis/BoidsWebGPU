@@ -51,18 +51,30 @@ export const boids2d = async () => {
   let aspectRatio: number;
   let camera: FreeCamera;
 
+  const computeShaders = createComputeShaders(engine);
   const {
     clearRasterComputeShader,
     generateBoidsComputeShader,
     boidComputeShader,
-    clearGridComputeShader,
-    updateGridComputeShader,
     prefixSumComputeShader,
     sumBucketsComputeShader,
     addSumsComputeShader,
     rearrangeBoidsComputeShader,
     renderBoidsComputeShader,
-  } = createComputeShaders(engine);
+  } = computeShaders;
+
+  // The grid carries over between frames, so every pass needs to be able to
+  // run before we start simulating
+  await Promise.all(
+    Object.values(computeShaders).map(
+      (shader) =>
+        new Promise<void>((resolve) => {
+          const check = () =>
+            shader.isReady() ? resolve() : setTimeout(check, 10);
+          check();
+        }),
+    ),
+  );
 
   let boidsComputeBuffer: StorageBuffer;
   let boidsComputeBuffer2: StorageBuffer;
@@ -93,7 +105,7 @@ export const boids2d = async () => {
   params.addUniform("dt", 1);
   params.addUniform("gridDimX", 1);
   params.addUniform("gridDimY", 1);
-  params.addUniform("gridCellSize", 1);
+  params.addUniform("gridInverseCellSize", 1);
   params.addUniform("gridTotalCells", 1);
   params.addUniform("divider", 1);
   params.addUniform("rngSeed", 1);
@@ -197,7 +209,7 @@ export const boids2d = async () => {
     params.updateFloat("separationFactor", separationFactor);
     params.updateUInt("gridDimX", gridDimX);
     params.updateUInt("gridDimY", gridDimY);
-    params.updateFloat("gridCellSize", visualRange);
+    params.updateFloat("gridInverseCellSize", 1 / visualRange);
     params.updateUInt("gridTotalCells", gridTotalCells);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
     params.updateUInt("blocks", blocks);
@@ -206,21 +218,13 @@ export const boids2d = async () => {
     params.update();
 
     // Grid
-    gridBuffer = new StorageBuffer(engine, numBoids * 8);
+    gridBuffer = new StorageBuffer(engine, numBoids * 4);
     gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
     gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
     gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
     gridSumsBuffer2 = new StorageBuffer(engine, blocks * 4);
 
-    clearGridComputeShader.setUniformBuffer("params", params);
-    clearGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
-
     clearRasterComputeShader.setUniformBuffer("params", params);
-
-    updateGridComputeShader.setUniformBuffer("params", params);
-    updateGridComputeShader.setStorageBuffer("grid", gridBuffer);
-    updateGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
-    updateGridComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
 
     prefixSumComputeShader.setUniformBuffer("params", params);
     prefixSumComputeShader.setStorageBuffer(
@@ -251,19 +255,22 @@ export const boids2d = async () => {
     boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
     boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
     boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
+    boidComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
+    boidComputeShader.setStorageBuffer("grid", gridBuffer);
 
     renderBoidsComputeShader.setUniformBuffer("params", params);
     renderBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
     ensureRenderTexture();
 
-    // Generate boids on GPU
+    // Generate boids on GPU, also bins them into the (zero initialised) grid
     generateBoidsComputeShader.setUniformBuffer("params", params);
     generateBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
-    generateBoidsComputeShader.dispatchWhenReady(
-      Math.ceil(numBoids / blockSize),
-      1,
-      1,
+    generateBoidsComputeShader.setStorageBuffer(
+      "gridOffsets",
+      gridOffsetsBuffer,
     );
+    generateBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
+    generateBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
   };
 
   const disposeAll = () => {
@@ -354,13 +361,12 @@ export const boids2d = async () => {
     smoothZoom();
     ensureRenderTexture();
 
-    params.updateFloat("dt", engine.getDeltaTime() / 1000);
+    // Cap dt like Unity's maximum allowed timestep so a long frame (e.g. after
+    // switching tabs) can't throw boids outside the grid
+    params.updateFloat("dt", Math.min(engine.getDeltaTime() / 1000, 1 / 3));
     params.updateFloat("zoom", orthoSize / 3);
     syncRenderParams();
     params.update();
-
-    clearGridComputeShader.dispatch(blocks, 1, 1);
-    updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
     prefixSumComputeShader.dispatch(blocks, 1, 1);
 

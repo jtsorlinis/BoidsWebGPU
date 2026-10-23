@@ -1,7 +1,7 @@
 #include<boid3dInclude>
 
 @binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read> gridOffsetsIn : array<u32>;
+@binding(1) @group(0) var<storage, read_write> gridOffsetsIn : array<u32>;
 @binding(2) @group(0) var<storage, read_write> gridOffsetsOut : array<u32>;
 @binding(3) @group(0) var<storage, read_write> gridSums : array<u32>;
 
@@ -19,6 +19,8 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>,
 
   if (globalID < params.gridTotalCells) {
     temp[localID] = gridOffsetsIn[globalID];
+    // Reset the counts so the boids kernel can fill them in for next frame
+    gridOffsetsIn[globalID] = 0u;
   } else {
     temp[localID] = 0u;
   }

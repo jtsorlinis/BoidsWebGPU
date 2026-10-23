@@ -1,20 +1,11 @@
 #include<boid3dInclude>
 
 @binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read_write> boids : array<Boid3d>;
-@binding(2) @group(0) var<storage, read> boidsIn : array<Boid3d>;
+@binding(1) @group(0) var<storage, read_write> boids : array<PackedBoid3d>;
+@binding(2) @group(0) var<storage, read> boidsIn : array<PackedBoid3d>;
 @binding(3) @group(0) var<storage, read> gridOffsets : array<u32>;
-
-fn getGridLocation(boid: Boid3d) -> vec3<u32> {
-  let x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
-  let y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
-  let z = u32(floor(boid.pos.z / params.gridCellSize + f32(params.gridDimZ / 2)));
-  return vec3<u32>(x, y, z);
-}
-
-fn getGridID(pos: vec3<u32>) -> u32 {
-  return params.gridDimX * params.gridDimY * pos.z + params.gridDimX * pos.y + pos.x;
-}
+@binding(4) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
+@binding(5) @group(0) var<storage, read_write> grid : array<u32>;
 
 fn mergedBehaviours(boid: ptr<function, Boid3d>) {
   var center : vec3<f32> = vec3<f32>();
@@ -22,8 +13,7 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>) {
   var avgVel : vec3<f32> = vec3<f32>();
   var neighbours: u32 = 0u;
 
-  let gridXYZ = getGridLocation(*boid);
-  let cell = getGridID(gridXYZ);
+  let cell = getGridID((*boid).pos);
   let visualRangeSq = params.visualRangeSq;
   let minDistanceSq = params.minDistanceSq;
   let zStep = params.gridDimX * params.gridDimY;
@@ -38,7 +28,7 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>) {
       let end = gridOffsets[gridIdx + 2u];
 
       for (var i = start; i < end; i += 1) {
-        let other = boidsIn[i];
+        let other = unpackBoid(boidsIn[i]);
         let diff = (*boid).pos - other.pos;
         let distSq = dot(diff, diff);
         if (distSq < visualRangeSq && distSq > 0.0) {
@@ -90,7 +80,7 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
     return;
   }
 
-  var boid = boidsIn[index];
+  var boid = unpackBoid(boidsIn[index]);
   
   mergedBehaviours(&boid);
   limitSpeed(&boid);
@@ -98,5 +88,8 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   
   boid.pos += boid.vel * params.dt;
 
-  boids[index] = boid;
+  boids[index] = packBoid(boid);
+
+  // Bin the boid into next frame's grid, saving a separate update grid pass
+  grid[index] = atomicAdd(&gridOffsetsIn[getGridID(boid.pos)], 1u);
 }

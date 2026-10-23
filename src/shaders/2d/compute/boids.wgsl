@@ -4,16 +4,8 @@
 @binding(1) @group(0) var<storage, read_write> boids : array<Boid>;
 @binding(2) @group(0) var<storage, read> boidsIn : array<Boid>;
 @binding(3) @group(0) var<storage, read> gridOffsets : array<u32>;
-
-fn getGridLocation(boid: Boid) -> vec2<u32> {
-  let x = u32(floor(boid.pos.x / params.gridCellSize + f32(params.gridDimX / 2)));
-  let y = u32(floor(boid.pos.y / params.gridCellSize + f32(params.gridDimY / 2)));
-  return vec2<u32>(x, y);
-}
-
-fn getGridID(pos: vec2<u32>) -> u32 {
-  return (params.gridDimX * pos.y) + pos.x;
-}
+@binding(4) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
+@binding(5) @group(0) var<storage, read_write> grid : array<u32>;
 
 fn mergedBehaviours(boid: ptr<function,Boid>) {
   var center : vec2<f32> = vec2<f32>();
@@ -21,8 +13,7 @@ fn mergedBehaviours(boid: ptr<function,Boid>) {
   var avgVel : vec2<f32> = vec2<f32>();
   var neighbours: u32 = 0u;
 
-  let gridXY = getGridLocation(*boid);
-  let cell = getGridID(gridXY);
+  let cell = getGridID((*boid).pos);
   let visualRangeSq = params.visualRangeSq;
   let minDistanceSq = params.minDistanceSq;
 
@@ -67,10 +58,10 @@ fn limitSpeed(boid: ptr<function, Boid>) {
 fn keepInBounds(boid: ptr<function, Boid>) {
   if (abs((*boid).pos.x) > params.xBound) {
     (*boid).vel.x -= sign((*boid).pos.x) * params.turnSpeed * params.dt;
-  } 
+  }
   if (abs((*boid).pos.y) > params.yBound) {
     (*boid).vel.y -= sign((*boid).pos.y) * params.turnSpeed * params.dt;
-  } 
+  }
 }
 
 fn avoidPredators(boid: ptr<function, Boid>) {
@@ -92,15 +83,18 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   }
 
   var boid = boidsIn[index];
-  
+
   mergedBehaviours(&boid);
   limitSpeed(&boid);
   keepInBounds(&boid);
   if (params.avoidMouse > 0) {
     avoidPredators(&boid);
   }
-  
+
   boid.pos += boid.vel * params.dt;
 
   boids[index] = boid;
+
+  // Bin the boid into next frame's grid, saving a separate update grid pass
+  grid[index] = atomicAdd(&gridOffsetsIn[getGridID(boid.pos)], 1u);
 }

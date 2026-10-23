@@ -3,14 +3,12 @@ import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 import addSums from "./compute/addSums.wgsl?raw";
 import clearRaster from "./compute/clearRaster.wgsl?raw";
-import clearGrid from "./compute/clearGrid.wgsl?raw";
 import boids from "./compute/boids.wgsl?raw";
 import generateBoids from "./compute/generateBoids.wgsl?raw";
 import prefixSum from "./compute/prefixSum.wgsl?raw";
 import rearrangeBoids from "./compute/rearrangeBoids.wgsl?raw";
 import renderBoids from "./compute/renderBoids.wgsl?raw";
 import sumBuckets from "./compute/sumBuckets.wgsl?raw";
-import updateGrid from "./compute/updateGrid.wgsl?raw";
 
 export const createComputeShaders = (engine: WebGPUEngine) => {
   const clearRasterComputeShader = new ComputeShader(
@@ -33,6 +31,8 @@ export const createComputeShaders = (engine: WebGPUEngine) => {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
         boids: { group: 0, binding: 1 },
+        gridOffsets: { group: 0, binding: 2 },
+        grid: { group: 0, binding: 3 },
       },
     }
   );
@@ -47,32 +47,8 @@ export const createComputeShaders = (engine: WebGPUEngine) => {
         boids: { group: 0, binding: 1 },
         boidsIn: { group: 0, binding: 2 },
         gridOffsets: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const clearGridComputeShader = new ComputeShader(
-    "clearGrid",
-    engine,
-    { computeSource: clearGrid },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsets: { group: 0, binding: 1 },
-      },
-    }
-  );
-
-  const updateGridComputeShader = new ComputeShader(
-    "updateGrid",
-    engine,
-    { computeSource: updateGrid },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        grid: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        boids: { group: 0, binding: 3 },
+        gridOffsetsIn: { group: 0, binding: 4 },
+        grid: { group: 0, binding: 5 },
       },
     }
   );
@@ -149,8 +125,6 @@ export const createComputeShaders = (engine: WebGPUEngine) => {
     clearRasterComputeShader,
     generateBoidsComputeShader,
     boidComputeShader,
-    clearGridComputeShader,
-    updateGridComputeShader,
     prefixSumComputeShader,
     sumBucketsComputeShader,
     addSumsComputeShader,

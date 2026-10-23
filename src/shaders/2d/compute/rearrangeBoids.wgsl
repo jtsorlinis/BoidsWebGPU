@@ -1,7 +1,7 @@
 #include<boidInclude>
 
 @binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read> grid : array<vec2<u32>>;
+@binding(1) @group(0) var<storage, read> grid : array<u32>;
 @binding(2) @group(0) var<storage, read> gridOffsets : array<u32>;
 @binding(3) @group(0) var<storage, read> boidsIn : array<Boid>;
 @binding(4) @group(0) var<storage, read_write> boidsOut : array<Boid>;
@@ -14,8 +14,7 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
     return;
   }
 
-  let gridID = grid[index].x;
-  let cellOffset = grid[index].y;
-  let newIndex = gridOffsets[gridID] + cellOffset;
-  boidsOut[newIndex] = boidsIn[index];
+  let boid = boidsIn[index];
+  let newIndex = gridOffsets[getGridID(boid.pos)] + grid[index];
+  boidsOut[newIndex] = boid;
 }

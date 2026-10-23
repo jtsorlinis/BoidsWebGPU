@@ -1,7 +1,7 @@
 #include<boid3dInclude>
 
 @binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read> boids : array<Boid3d>;
+@binding(1) @group(0) var<storage, read> boids : array<PackedBoid3d>;
 @binding(2) @group(0) var<storage, read> templatePositions : array<vec4<f32>>;
 @binding(3) @group(0) var<storage, read> templateNormals : array<vec4<f32>>;
 @binding(4) @group(0) var<storage, read_write> renderPositions : array<vec4<f32>>;
@@ -33,15 +33,20 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   }
 
   let boidIndex : u32 = index / params.verticesPerBoid;
-  let vertexIndex : u32 = index - boidIndex * params.verticesPerBoid;
-  let boid = boids[boidIndex];
+  var vertexIndex : u32 = index - boidIndex * params.verticesPerBoid;
+  let boid = unpackBoid(boids[boidIndex]);
+
+  // Boids are single sided, and the shadow pass pushes casters along -normal,
+  // so face each triangle towards the light (flipping its winding to match)
+  var normal = rotate3d(templateNormals[vertexIndex].xyz, boid.vel);
+  if (dot(normal, params.lightDir) > 0.0) {
+    normal = -normal;
+    vertexIndex += 2u - 2u * (vertexIndex % 3u);
+  }
 
   renderPositions[index] = vec4<f32>(
     rotate3d(templatePositions[vertexIndex].xyz, boid.vel) + boid.pos,
     1.0
   );
-  renderNormals[index] = vec4<f32>(
-    rotate3d(templateNormals[vertexIndex].xyz, boid.vel),
-    0.0
-  );
+  renderNormals[index] = vec4<f32>(normal, 0.0);
 }

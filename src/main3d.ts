@@ -25,6 +25,11 @@ const SKYBOX_TEXTURE_SIZE = 64;
 const SKYBOX_SIZE = 100000;
 const SHADOW_MAP_SIZE = 4096;
 const SUN_INTENSITY = 3;
+const SUN_DIRECTION = new Vector3(
+  -0.3213937660622072,
+  -0.7660444011712928,
+  0.5566704252156701,
+);
 const FILL_LIGHT_INTENSITY = 0.4;
 const ZENITH_SKY = [0.45, 0.55, 0.71] as const;
 const HORIZON_SKY = [0.65, 0.76, 0.88] as const;
@@ -199,17 +204,29 @@ export const boids3d = async () => {
   let ground!: Mesh;
   let boidMaterial!: PBRMaterial;
 
+  const computeShaders = createComputeShaders3d(engine);
   const {
     generateBoidsComputeShader,
     boidComputeShader,
     buildRenderBuffersComputeShader,
-    clearGridComputeShader,
-    updateGridComputeShader,
     prefixSumComputeShader,
     sumBucketsComputeShader,
     addSumsComputeShader,
     rearrangeBoidsComputeShader,
-  } = createComputeShaders3d(engine);
+  } = computeShaders;
+
+  // The grid carries over between frames, so every pass needs to be able to
+  // run before we start simulating
+  await Promise.all(
+    Object.values(computeShaders).map(
+      (shader) =>
+        new Promise<void>((resolve) => {
+          const check = () =>
+            shader.isReady() ? resolve() : setTimeout(check, 10);
+          check();
+        }),
+    ),
+  );
 
   let boidsComputeBuffer: StorageBuffer | null = null;
   let boidsComputeBuffer2: StorageBuffer | null = null;
@@ -244,12 +261,13 @@ export const boids3d = async () => {
   params.addUniform("gridDimX", 1);
   params.addUniform("gridDimY", 1);
   params.addUniform("gridDimZ", 1);
-  params.addUniform("gridCellSize", 1);
+  params.addUniform("gridInverseCellSize", 1);
   params.addUniform("gridTotalCells", 1);
   params.addUniform("divider", 1);
   params.addUniform("rngSeed", 1);
   params.addUniform("blocks", 1);
   params.addUniform("verticesPerBoid", 1);
+  params.addUniform("lightDir", 3);
 
   const createStaticScene = () => {
     scene = new Scene(engine);
@@ -272,11 +290,7 @@ export const boids3d = async () => {
     camera.attachControl();
 
     // Scene lighting and shadow receiver
-    const sun = new DirectionalLight(
-      "sun",
-      new Vector3(-0.3213937660622072, -0.7660444011712928, 0.5566704252156701),
-      scene,
-    );
+    const sun = new DirectionalLight("sun", SUN_DIRECTION.clone(), scene);
     sun.position = new Vector3(-5.4498076, 8.44, -21.35);
     sun.diffuse = new Color3(1, 0.95686275, 0.8392157);
     sun.specular = new Color3(1, 0.95686275, 0.8392157);
@@ -330,6 +344,9 @@ export const boids3d = async () => {
     boidMaterial.albedoColor = new Color3(1, 0.02, 0);
     boidMaterial.metallic = 0;
     boidMaterial.roughness = 0.5;
+    // Boids are a single triangle, so light whichever side is visible
+    boidMaterial.backFaceCulling = false;
+    boidMaterial.twoSidedLighting = true;
   };
 
   const disposeSimulationResources = () => {
@@ -393,8 +410,8 @@ export const boids3d = async () => {
     blocks = Math.ceil(gridTotalCells / blockSize);
 
     // Boids
-    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 32);
-    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 32);
+    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 24);
+    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 24);
 
     // Create boid mesh
     const renderMesh = getRenderMeshData(triangleMesh);
@@ -484,28 +501,21 @@ export const boids3d = async () => {
     params.updateUInt("gridDimX", gridDimX);
     params.updateUInt("gridDimY", gridDimY);
     params.updateUInt("gridDimZ", gridDimZ);
-    params.updateFloat("gridCellSize", visualRange);
+    params.updateFloat("gridInverseCellSize", 1 / visualRange);
     params.updateUInt("gridTotalCells", gridTotalCells);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
     params.updateUInt("blocks", blocks);
     params.updateUInt("verticesPerBoid", verticesPerBoid);
+    params.updateVector3("lightDir", SUN_DIRECTION);
 
     params.update();
 
     // Grid
-    gridBuffer = new StorageBuffer(engine, numBoids * 8);
+    gridBuffer = new StorageBuffer(engine, numBoids * 4);
     gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
     gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
     gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
     gridSumsBuffer2 = new StorageBuffer(engine, blocks * 4);
-
-    clearGridComputeShader.setUniformBuffer("params", params);
-    clearGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
-
-    updateGridComputeShader.setUniformBuffer("params", params);
-    updateGridComputeShader.setStorageBuffer("grid", gridBuffer);
-    updateGridComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer);
-    updateGridComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
 
     prefixSumComputeShader.setUniformBuffer("params", params);
     prefixSumComputeShader.setStorageBuffer(
@@ -536,6 +546,8 @@ export const boids3d = async () => {
     boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
     boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
     boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
+    boidComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
+    boidComputeShader.setStorageBuffer("grid", gridBuffer);
 
     buildRenderBuffersComputeShader.setUniformBuffer("params", params);
     buildRenderBuffersComputeShader.setStorageBuffer(
@@ -559,14 +571,15 @@ export const boids3d = async () => {
       renderNormalsBuffer,
     );
 
-    // Generate boids on GPU
+    // Generate boids on GPU, also bins them into the (zero initialised) grid
     generateBoidsComputeShader.setUniformBuffer("params", params);
     generateBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
-    generateBoidsComputeShader.dispatchWhenReady(
-      Math.ceil(numBoids / blockSize),
-      1,
-      1,
+    generateBoidsComputeShader.setStorageBuffer(
+      "gridOffsets",
+      gridOffsetsBuffer,
     );
+    generateBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
+    generateBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
   };
 
   let disposed = false;
@@ -625,11 +638,10 @@ export const boids3d = async () => {
     const fps = engine.getFps();
     fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
 
-    params.updateFloat("dt", engine.getDeltaTime() / 1000);
+    // Cap dt like Unity's maximum allowed timestep so a long frame (e.g. after
+    // switching tabs) can't throw boids outside the grid
+    params.updateFloat("dt", Math.min(engine.getDeltaTime() / 1000, 1 / 3));
     params.update();
-
-    clearGridComputeShader.dispatch(blocks, 1, 1);
-    updateGridComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
 
     prefixSumComputeShader.dispatch(blocks, 1, 1);
 
