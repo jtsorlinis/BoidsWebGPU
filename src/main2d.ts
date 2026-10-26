@@ -9,7 +9,13 @@ import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Layer } from "@babylonjs/core/Layers/layer";
-import { setupIncludes } from "./shaders";
+import {
+  blockCells,
+  boidBlockSize,
+  getDispatchSize,
+  searchBlockSize2d,
+  setupIncludes,
+} from "./shaders";
 import { createComputeShaders } from "./shaders/2d";
 
 export const boids2d = async () => {
@@ -39,10 +45,14 @@ export const boids2d = async () => {
   await engine.initAsync();
   document.getElementById("loader")?.remove();
 
-  const blockSize = engine.currentLimits.maxComputeWorkgroupSizeX;
-  setupIncludes(blockSize);
+  setupIncludes();
   const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
-  const boidLimit = blockSize * maxBlocks;
+  // Same limit as Unity, unless the boid buffers would be too big to bind
+  const maxBufferSize = Math.min(
+    engine.currentLimits.maxStorageBufferBindingSize,
+    engine.currentLimits.maxBufferSize,
+  );
+  const boidLimit = Math.min(1024 * maxBlocks, Math.floor(maxBufferSize / 16));
   boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
   let scene: Scene;
@@ -56,11 +66,10 @@ export const boids2d = async () => {
     clearRasterComputeShader,
     generateBoidsComputeShader,
     boidComputeShader,
+    sumBlocksComputeShader,
+    scanSumsComputeShader,
     prefixSumComputeShader,
-    sumBucketsComputeShader,
-    addSumsComputeShader,
     rearrangeBoidsComputeShader,
-    renderBoidsComputeShader,
   } = computeShaders;
 
   // The grid carries over between frames, so every pass needs to be able to
@@ -82,9 +91,12 @@ export const boids2d = async () => {
   let gridOffsetsBuffer: StorageBuffer;
   let gridOffsetsBuffer2: StorageBuffer;
   let gridSumsBuffer: StorageBuffer;
-  let gridSumsBuffer2: StorageBuffer;
   let gridTotalCells: number;
   let blocks: number;
+  let boidGroupsX: number;
+  let boidGroupsY: number;
+  let updateGroupsX: number;
+  let updateGroupsY: number;
   let rasterLayer: Layer;
   let renderTexture: RawTexture | null = null;
   let renderTextureWidth = 0;
@@ -107,7 +119,8 @@ export const boids2d = async () => {
   params.addUniform("gridDimY", 1);
   params.addUniform("gridInverseCellSize", 1);
   params.addUniform("gridTotalCells", 1);
-  params.addUniform("divider", 1);
+  params.addUniform("boidStride", 1);
+  params.addUniform("updateGroupsX", 1);
   params.addUniform("rngSeed", 1);
   params.addUniform("blocks", 1);
   params.addUniform("avoidMouse", 1);
@@ -156,7 +169,10 @@ export const boids2d = async () => {
 
     rasterLayer.texture = renderTexture;
     clearRasterComputeShader.setStorageTexture("renderTarget", renderTexture);
-    renderBoidsComputeShader.setStorageTexture("renderTarget", renderTexture);
+    rearrangeBoidsComputeShader.setStorageTexture(
+      "renderTarget",
+      renderTexture,
+    );
 
     previousTexture?.dispose();
   };
@@ -181,7 +197,18 @@ export const boids2d = async () => {
     const gridDimX = Math.floor((xBound * 2) / visualRange) + 30;
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
     gridTotalCells = gridDimX * gridDimY;
-    blocks = Math.ceil(gridTotalCells / blockSize);
+    blocks = Math.ceil(gridTotalCells / blockCells);
+
+    [boidGroupsX, boidGroupsY] = getDispatchSize(
+      numBoids,
+      boidBlockSize,
+      maxBlocks,
+    );
+    [updateGroupsX, updateGroupsY] = getDispatchSize(
+      numBoids,
+      searchBlockSize2d,
+      maxBlocks,
+    );
 
     // Boids
     boidsComputeBuffer = new StorageBuffer(engine, numBoids * 16);
@@ -211,6 +238,8 @@ export const boids2d = async () => {
     params.updateUInt("gridDimY", gridDimY);
     params.updateFloat("gridInverseCellSize", 1 / visualRange);
     params.updateUInt("gridTotalCells", gridTotalCells);
+    params.updateUInt("boidStride", boidGroupsX * boidBlockSize);
+    params.updateUInt("updateGroupsX", updateGroupsX);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
     params.updateUInt("blocks", blocks);
     syncRenderParams();
@@ -222,9 +251,15 @@ export const boids2d = async () => {
     gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
     gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
     gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
-    gridSumsBuffer2 = new StorageBuffer(engine, blocks * 4);
 
     clearRasterComputeShader.setUniformBuffer("params", params);
+
+    sumBlocksComputeShader.setUniformBuffer("params", params);
+    sumBlocksComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
+    sumBlocksComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
+
+    scanSumsComputeShader.setUniformBuffer("params", params);
+    scanSumsComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
 
     prefixSumComputeShader.setUniformBuffer("params", params);
     prefixSumComputeShader.setStorageBuffer(
@@ -233,11 +268,6 @@ export const boids2d = async () => {
     );
     prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
     prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
-
-    sumBucketsComputeShader.setUniformBuffer("params", params);
-
-    addSumsComputeShader.setUniformBuffer("params", params);
-    addSumsComputeShader.setStorageBuffer("gridOffsetsOut", gridOffsetsBuffer2);
 
     rearrangeBoidsComputeShader.setUniformBuffer("params", params);
     rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
@@ -258,8 +288,6 @@ export const boids2d = async () => {
     boidComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
     boidComputeShader.setStorageBuffer("grid", gridBuffer);
 
-    renderBoidsComputeShader.setUniformBuffer("params", params);
-    renderBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
     ensureRenderTexture();
 
     // Generate boids on GPU, also bins them into the (zero initialised) grid
@@ -270,7 +298,7 @@ export const boids2d = async () => {
       gridOffsetsBuffer,
     );
     generateBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
-    generateBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    generateBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
   };
 
   const disposeAll = () => {
@@ -282,7 +310,6 @@ export const boids2d = async () => {
     gridOffsetsBuffer.dispose();
     gridOffsetsBuffer2.dispose();
     gridSumsBuffer.dispose();
-    gridSumsBuffer2.dispose();
     renderTexture = null;
     renderTextureWidth = 0;
     renderTextureHeight = 0;
@@ -368,39 +395,21 @@ export const boids2d = async () => {
     syncRenderParams();
     params.update();
 
-    prefixSumComputeShader.dispatch(blocks, 1, 1);
-
-    let swap = false;
-    for (let d = 1; d < blocks; d *= 2) {
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsIn",
-        swap ? gridSumsBuffer2 : gridSumsBuffer,
-      );
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsOut",
-        swap ? gridSumsBuffer : gridSumsBuffer2,
-      );
-
-      params.updateUInt("divider", d);
-      params.update();
-      sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
-      swap = !swap;
-    }
-
-    addSumsComputeShader.setStorageBuffer(
-      "gridSumsIn",
-      swap ? gridSumsBuffer2 : gridSumsBuffer,
-    );
-    addSumsComputeShader.dispatch(blocks, 1, 1);
-    rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
-
-    boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    // Cleared first, the rearrange pass draws the boids
     clearRasterComputeShader.dispatch(
       Math.ceil(renderTextureWidth / clearBlockSize),
       Math.ceil(renderTextureHeight / clearBlockSize),
       1,
     );
-    renderBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+
+    // Generate offsets (prefix sum): sum each block of cells, scan the sums,
+    // then scan each block starting from its sum
+    sumBlocksComputeShader.dispatch(blocks, 1, 1);
+    scanSumsComputeShader.dispatch(1, 1, 1);
+    prefixSumComputeShader.dispatch(blocks, 1, 1);
+
+    rearrangeBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
+    boidComputeShader.dispatch(updateGroupsX, updateGroupsY, 1);
     scene.render();
   });
 

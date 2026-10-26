@@ -1,4 +1,4 @@
-// Single sided, buildRenderBuffers3d faces it towards the light and the
+// Single sided, rearrangeBoids3d faces it towards the light and the
 // material lights both sides
 // prettier-ignore
 const vertices = new Float32Array([

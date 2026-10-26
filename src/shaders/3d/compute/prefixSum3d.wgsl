@@ -1,55 +1,32 @@
 #include<boid3dInclude>
+#include<scanInclude>
 
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read_write> gridOffsetsIn : array<u32>;
 @binding(2) @group(0) var<storage, read_write> gridOffsetsOut : array<u32>;
-@binding(3) @group(0) var<storage, read_write> gridSums : array<u32>;
+@binding(3) @group(0) var<storage, read> gridSums : array<u32>;
 
-var<workgroup> temp : array<u32, 2 * blockSize>;
-
+// Scans each block of cells, starting from the block's offset from scanSums
 @compute @workgroup_size(blockSize)
-fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>, 
-        @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
-        @builtin(workgroup_id) GroupID: vec3<u32>) {
-  let globalID = GlobalInvocationID.x;
-  let localID = LocalInvocationID.x;
+fn main(@builtin(local_invocation_index) localID : u32, @builtin(workgroup_id) GroupID : vec3<u32>) {
   let groupID = GroupID.x;
-  var pout: u32 = 0;
-  var pin: u32 = 1;
 
-  if (globalID < params.gridTotalCells) {
-    temp[localID] = gridOffsetsIn[globalID];
-    // Reset the counts so the boids kernel can fill them in for next frame
-    gridOffsetsIn[globalID] = 0u;
-  } else {
-    temp[localID] = 0u;
-  }
-  workgroupBarrier();
-
-  for (var offset: u32 = 1; offset < blockSize; offset *= 2) {
-    pout = 1 - pout; // swap double buffer indices
-    pin = 1 - pout;
-    if (localID >= offset) {
-        temp[pout * blockSize + localID] = temp[pin * blockSize + localID] + temp[pin * blockSize + localID - offset];
-    } else {
-        temp[pout * blockSize + localID] = temp[pin * blockSize + localID];
+  var counts = vec4<u32>();
+  for (var row = 0u; row < 4u; row += 1u) {
+    let cell = getCell(groupID, localID, row);
+    if (cell < params.gridTotalCells) {
+      counts[row] = gridOffsetsIn[cell];
     }
-    workgroupBarrier();
   }
 
-  // Don't write out of bounds
-  if (globalID >= params.gridTotalCells) {
-      return;
+  var total = 0u;
+  let offsets = groupScan(counts, localID, &total) + gridSums[groupID];
+  for (var row = 0u; row < 4u; row += 1u) {
+    let cell = getCell(groupID, localID, row);
+    if (cell < params.gridTotalCells) {
+      gridOffsetsOut[cell] = offsets[row];
+      // Reset the counts so the boids kernel can fill them in for next frame
+      gridOffsetsIn[cell] = 0u;
+    }
   }
-
-  let writeIdx = pout * blockSize + localID;
-  var exclusiveVal = 0u;
-  if (localID > 0u) {
-    exclusiveVal = temp[writeIdx - 1u];
-  }
-
-  gridOffsetsOut[globalID] = exclusiveVal;
-  if (localID == 0) {
-      gridSums[groupID] = temp[pout * blockSize + blockSize - 1];
-  } 
 }

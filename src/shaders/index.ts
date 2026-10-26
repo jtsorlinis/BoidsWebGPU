@@ -1,8 +1,38 @@
 import { ShaderStore } from "@babylonjs/core/Engines/shaderStore";
+import scanInclude from "./scan.wgsl?raw";
 
-export const setupIncludes = (blockSize: number) => {
+// Per-boid kernels
+export const boidBlockSize = 256;
+// Prefix sum kernels, each group covers 4 rows of blockSize cells
+export const blockSize = 256;
+export const blockCells = blockSize * 4;
+// Neighbour search kernels, each group stages its neighbour rows into a shared tile
+export const searchBlockSize2d = 128;
+export const searchBlockSize3d = 64;
+const tileSize2d = 256;
+const tileSize3d = 160;
+
+// Kernels spill into a second dispatch dimension past maxGroups groups, so
+// they index threads with groupsX * groupSize as the row stride
+export const getDispatchSize = (
+  threads: number,
+  groupSize: number,
+  maxGroups: number,
+) => {
+  const groups = Math.ceil(threads / groupSize);
+  const groupsY = Math.max(1, Math.ceil(groups / maxGroups));
+  return [Math.ceil(groups / groupsY), groupsY] as const;
+};
+
+export const setupIncludes = () => {
+  ShaderStore.IncludesShadersStoreWGSL["scanInclude"] = scanInclude;
+
   ShaderStore.IncludesShadersStoreWGSL["boidInclude"] = `
+    const boidBlockSize: u32 = ${boidBlockSize};
     const blockSize: u32 = ${blockSize};
+    const blockCells: u32 = ${blockCells};
+    const searchBlockSize: u32 = ${searchBlockSize2d};
+    const tileSize: u32 = ${tileSize2d};
 
     struct Params {
       numBoids: u32,
@@ -21,7 +51,8 @@ export const setupIncludes = (blockSize: number) => {
       gridDimY : u32,
       gridInverseCellSize : f32,
       gridTotalCells : u32,
-      divider: u32,
+      boidStride: u32,
+      updateGroupsX: u32,
       rngSeed: u32,
       blocks: u32,
       avoidMouse: u32,
@@ -44,10 +75,18 @@ export const setupIncludes = (blockSize: number) => {
       let y = i32(floor(pos.y * params.gridInverseCellSize)) + i32(params.gridDimY / 2u);
       return params.gridDimX * u32(y) + u32(x);
     }
+
+    fn getBoidIndex(id: vec3<u32>) -> u32 {
+      return id.y * params.boidStride + id.x;
+    }
   `;
 
   ShaderStore.IncludesShadersStoreWGSL["boid3dInclude"] = `
+    const boidBlockSize: u32 = ${boidBlockSize};
     const blockSize: u32 = ${blockSize};
+    const blockCells: u32 = ${blockCells};
+    const searchBlockSize: u32 = ${searchBlockSize3d};
+    const tileSize: u32 = ${tileSize3d};
 
     struct Params {
       numBoids: u32,
@@ -68,7 +107,8 @@ export const setupIncludes = (blockSize: number) => {
       gridDimZ : u32,
       gridInverseCellSize : f32,
       gridTotalCells : u32,
-      divider: u32,
+      boidStride: u32,
+      updateGroupsX: u32,
       rngSeed: u32,
       blocks: u32,
       verticesPerBoid: u32,
@@ -105,6 +145,10 @@ export const setupIncludes = (blockSize: number) => {
       let y = i32(floor(pos.y * params.gridInverseCellSize)) + i32(params.gridDimY / 2u);
       let z = i32(floor(pos.z * params.gridInverseCellSize)) + i32(params.gridDimZ / 2u);
       return params.gridDimX * params.gridDimY * u32(z) + params.gridDimX * u32(y) + u32(x);
+    }
+
+    fn getBoidIndex(id: vec3<u32>) -> u32 {
+      return id.y * params.boidStride + id.x;
     }
   `;
 };

@@ -16,7 +16,13 @@ import { RawCubeTexture } from "@babylonjs/core/Materials/Textures/rawCubeTextur
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Scene } from "@babylonjs/core/scene";
 import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
-import { setupIncludes } from "./shaders";
+import {
+  blockCells,
+  boidBlockSize,
+  getDispatchSize,
+  searchBlockSize3d,
+  setupIncludes,
+} from "./shaders";
 import { triangleMesh } from "./meshes/triangleMesh";
 import { createComputeShaders3d } from "./shaders/3d";
 
@@ -191,10 +197,18 @@ export const boids3d = async () => {
   await engine.initAsync();
   document.getElementById("loader")?.remove();
 
-  const blockSize = engine.currentLimits.maxComputeWorkgroupSizeX;
-  setupIncludes(blockSize);
+  setupIncludes();
   const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
-  const boidLimit = (blockSize * maxBlocks) / 4;
+  // Same limit as Unity, unless the render vertices (3 vec4 positions per
+  // boid) would be too big to bind
+  const maxBufferSize = Math.min(
+    engine.currentLimits.maxStorageBufferBindingSize,
+    engine.currentLimits.maxBufferSize,
+  );
+  const boidLimit = Math.min(
+    (1024 * maxBlocks) / 4,
+    Math.floor(maxBufferSize / (3 * 16)),
+  );
   boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
   let scene!: Scene;
@@ -208,10 +222,9 @@ export const boids3d = async () => {
   const {
     generateBoidsComputeShader,
     boidComputeShader,
-    buildRenderBuffersComputeShader,
+    sumBlocksComputeShader,
+    scanSumsComputeShader,
     prefixSumComputeShader,
-    sumBucketsComputeShader,
-    addSumsComputeShader,
     rearrangeBoidsComputeShader,
   } = computeShaders;
 
@@ -234,14 +247,16 @@ export const boids3d = async () => {
   let gridOffsetsBuffer: StorageBuffer | null = null;
   let gridOffsetsBuffer2: StorageBuffer | null = null;
   let gridSumsBuffer: StorageBuffer | null = null;
-  let gridSumsBuffer2: StorageBuffer | null = null;
   let templatePositionsBuffer: StorageBuffer | null = null;
   let templateNormalsBuffer: StorageBuffer | null = null;
   let renderPositionsBuffer: StorageBuffer | null = null;
   let renderNormalsBuffer: StorageBuffer | null = null;
   let gridTotalCells = 0;
   let blocks = 0;
-  let renderVertexCount = 0;
+  let boidGroupsX = 0;
+  let boidGroupsY = 0;
+  let updateGroupsX = 0;
+  let updateGroupsY = 0;
   let boidMesh: Mesh | null = null;
 
   const params = new UniformBuffer(engine, undefined, false, "params");
@@ -263,7 +278,8 @@ export const boids3d = async () => {
   params.addUniform("gridDimZ", 1);
   params.addUniform("gridInverseCellSize", 1);
   params.addUniform("gridTotalCells", 1);
-  params.addUniform("divider", 1);
+  params.addUniform("boidStride", 1);
+  params.addUniform("updateGroupsX", 1);
   params.addUniform("rngSeed", 1);
   params.addUniform("blocks", 1);
   params.addUniform("verticesPerBoid", 1);
@@ -362,7 +378,6 @@ export const boids3d = async () => {
     gridOffsetsBuffer?.dispose();
     gridOffsetsBuffer2?.dispose();
     gridSumsBuffer?.dispose();
-    gridSumsBuffer2?.dispose();
     templatePositionsBuffer?.dispose();
     templateNormalsBuffer?.dispose();
     renderPositionsBuffer?.dispose();
@@ -374,12 +389,10 @@ export const boids3d = async () => {
     gridOffsetsBuffer = null;
     gridOffsetsBuffer2 = null;
     gridSumsBuffer = null;
-    gridSumsBuffer2 = null;
     templatePositionsBuffer = null;
     templateNormalsBuffer = null;
     renderPositionsBuffer = null;
     renderNormalsBuffer = null;
-    renderVertexCount = 0;
   };
 
   const rebuildSimulation = (resetCamera: boolean) => {
@@ -407,7 +420,18 @@ export const boids3d = async () => {
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
     const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
     gridTotalCells = gridDimX * gridDimY * gridDimZ;
-    blocks = Math.ceil(gridTotalCells / blockSize);
+    blocks = Math.ceil(gridTotalCells / blockCells);
+
+    [boidGroupsX, boidGroupsY] = getDispatchSize(
+      numBoids,
+      boidBlockSize,
+      maxBlocks,
+    );
+    [updateGroupsX, updateGroupsY] = getDispatchSize(
+      numBoids,
+      searchBlockSize3d,
+      maxBlocks,
+    );
 
     // Boids
     boidsComputeBuffer = new StorageBuffer(engine, numBoids * 24);
@@ -417,7 +441,6 @@ export const boids3d = async () => {
     const renderMesh = getRenderMeshData(triangleMesh);
     const verticesPerBoid = renderMesh.positions.length / 3;
     const totalVertices = verticesPerBoid * numBoids;
-    renderVertexCount = totalVertices;
     templatePositionsBuffer = new StorageBuffer(
       engine,
       verticesPerBoid * 4 * 4,
@@ -503,6 +526,8 @@ export const boids3d = async () => {
     params.updateUInt("gridDimZ", gridDimZ);
     params.updateFloat("gridInverseCellSize", 1 / visualRange);
     params.updateUInt("gridTotalCells", gridTotalCells);
+    params.updateUInt("boidStride", boidGroupsX * boidBlockSize);
+    params.updateUInt("updateGroupsX", updateGroupsX);
     params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
     params.updateUInt("blocks", blocks);
     params.updateUInt("verticesPerBoid", verticesPerBoid);
@@ -515,7 +540,13 @@ export const boids3d = async () => {
     gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
     gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
     gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
-    gridSumsBuffer2 = new StorageBuffer(engine, blocks * 4);
+
+    sumBlocksComputeShader.setUniformBuffer("params", params);
+    sumBlocksComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
+    sumBlocksComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
+
+    scanSumsComputeShader.setUniformBuffer("params", params);
+    scanSumsComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
 
     prefixSumComputeShader.setUniformBuffer("params", params);
     prefixSumComputeShader.setStorageBuffer(
@@ -524,11 +555,6 @@ export const boids3d = async () => {
     );
     prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
     prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
-
-    sumBucketsComputeShader.setUniformBuffer("params", params);
-
-    addSumsComputeShader.setUniformBuffer("params", params);
-    addSumsComputeShader.setStorageBuffer("gridOffsetsOut", gridOffsetsBuffer2);
 
     rearrangeBoidsComputeShader.setUniformBuffer("params", params);
     rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
@@ -541,6 +567,22 @@ export const boids3d = async () => {
       "boidsOut",
       boidsComputeBuffer2,
     );
+    rearrangeBoidsComputeShader.setStorageBuffer(
+      "templatePositions",
+      templatePositionsBuffer,
+    );
+    rearrangeBoidsComputeShader.setStorageBuffer(
+      "templateNormals",
+      templateNormalsBuffer,
+    );
+    rearrangeBoidsComputeShader.setStorageBuffer(
+      "renderPositions",
+      renderPositionsBuffer,
+    );
+    rearrangeBoidsComputeShader.setStorageBuffer(
+      "renderNormals",
+      renderNormalsBuffer,
+    );
 
     boidComputeShader.setUniformBuffer("params", params);
     boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
@@ -548,28 +590,6 @@ export const boids3d = async () => {
     boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
     boidComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
     boidComputeShader.setStorageBuffer("grid", gridBuffer);
-
-    buildRenderBuffersComputeShader.setUniformBuffer("params", params);
-    buildRenderBuffersComputeShader.setStorageBuffer(
-      "boids",
-      boidsComputeBuffer,
-    );
-    buildRenderBuffersComputeShader.setStorageBuffer(
-      "templatePositions",
-      templatePositionsBuffer,
-    );
-    buildRenderBuffersComputeShader.setStorageBuffer(
-      "templateNormals",
-      templateNormalsBuffer,
-    );
-    buildRenderBuffersComputeShader.setStorageBuffer(
-      "renderPositions",
-      renderPositionsBuffer,
-    );
-    buildRenderBuffersComputeShader.setStorageBuffer(
-      "renderNormals",
-      renderNormalsBuffer,
-    );
 
     // Generate boids on GPU, also bins them into the (zero initialised) grid
     generateBoidsComputeShader.setUniformBuffer("params", params);
@@ -579,7 +599,7 @@ export const boids3d = async () => {
       gridOffsetsBuffer,
     );
     generateBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
-    generateBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
+    generateBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
   };
 
   let disposed = false;
@@ -629,8 +649,7 @@ export const boids3d = async () => {
       !gridBuffer ||
       !gridOffsetsBuffer ||
       !gridOffsetsBuffer2 ||
-      !gridSumsBuffer ||
-      !gridSumsBuffer2
+      !gridSumsBuffer
     ) {
       return;
     }
@@ -643,37 +662,15 @@ export const boids3d = async () => {
     params.updateFloat("dt", Math.min(engine.getDeltaTime() / 1000, 1 / 3));
     params.update();
 
+    // Generate offsets (prefix sum): sum each block of cells, scan the sums,
+    // then scan each block starting from its sum
+    sumBlocksComputeShader.dispatch(blocks, 1, 1);
+    scanSumsComputeShader.dispatch(1, 1, 1);
     prefixSumComputeShader.dispatch(blocks, 1, 1);
 
-    let swap = false;
-    for (let d = 1; d < blocks; d *= 2) {
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsIn",
-        swap ? gridSumsBuffer2 : gridSumsBuffer,
-      );
-      sumBucketsComputeShader.setStorageBuffer(
-        "gridSumsOut",
-        swap ? gridSumsBuffer : gridSumsBuffer2,
-      );
-
-      params.updateUInt("divider", d);
-      params.update();
-      sumBucketsComputeShader.dispatch(Math.ceil(blocks / blockSize), 1, 1);
-      swap = !swap;
-    }
-
-    addSumsComputeShader.setStorageBuffer(
-      "gridSumsIn",
-      swap ? gridSumsBuffer2 : gridSumsBuffer,
-    );
-    addSumsComputeShader.dispatch(blocks, 1, 1);
-    rearrangeBoidsComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
-    boidComputeShader.dispatch(Math.ceil(numBoids / blockSize), 1, 1);
-    buildRenderBuffersComputeShader.dispatch(
-      Math.ceil(renderVertexCount / blockSize),
-      1,
-      1,
-    );
+    // Rearrange boids (and build their render vertices)
+    rearrangeBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
+    boidComputeShader.dispatch(updateGroupsX, updateGroupsY, 1);
     scene.render();
   });
 

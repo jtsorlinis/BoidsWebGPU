@@ -1,13 +1,12 @@
 import "@babylonjs/core/Engines/WebGPU/Extensions/engine.computeShader";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
-import addSums3d from "./compute/addSums3d.wgsl?raw";
 import boids3d from "./compute/boids3d.wgsl?raw";
-import buildRenderBuffers3d from "./compute/buildRenderBuffers3d.wgsl?raw";
 import generateBoids3d from "./compute/generateBoids3d.wgsl?raw";
 import prefixSum3d from "./compute/prefixSum3d.wgsl?raw";
 import rearrangeBoids3d from "./compute/rearrangeBoids3d.wgsl?raw";
-import sumBuckets3d from "./compute/sumBuckets3d.wgsl?raw";
+import scanSums3d from "./compute/scanSums3d.wgsl?raw";
+import sumBlocks3d from "./compute/sumBlocks3d.wgsl?raw";
 
 export const createComputeShaders3d = (engine: WebGPUEngine) => {
   const generateBoidsComputeShader = new ComputeShader(
@@ -40,18 +39,27 @@ export const createComputeShaders3d = (engine: WebGPUEngine) => {
     }
   );
 
-  const buildRenderBuffersComputeShader = new ComputeShader(
-    "buildRenderBuffers",
+  const sumBlocksComputeShader = new ComputeShader(
+    "sumBlocks",
     engine,
-    { computeSource: buildRenderBuffers3d },
+    { computeSource: sumBlocks3d },
     {
       bindingsMapping: {
         params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-        templatePositions: { group: 0, binding: 2 },
-        templateNormals: { group: 0, binding: 3 },
-        renderPositions: { group: 0, binding: 4 },
-        renderNormals: { group: 0, binding: 5 },
+        gridOffsetsIn: { group: 0, binding: 1 },
+        gridSums: { group: 0, binding: 2 },
+      },
+    }
+  );
+
+  const scanSumsComputeShader = new ComputeShader(
+    "scanSums",
+    engine,
+    { computeSource: scanSums3d },
+    {
+      bindingsMapping: {
+        params: { group: 0, binding: 0 },
+        gridSums: { group: 0, binding: 1 },
       },
     }
   );
@@ -70,32 +78,6 @@ export const createComputeShaders3d = (engine: WebGPUEngine) => {
     }
   );
 
-  const sumBucketsComputeShader = new ComputeShader(
-    "sumBuckets",
-    engine,
-    { computeSource: sumBuckets3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridSumsOut: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const addSumsComputeShader = new ComputeShader(
-    "addSums",
-    engine,
-    { computeSource: addSums3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
-      },
-    }
-  );
-
   const rearrangeBoidsComputeShader = new ComputeShader(
     "rearrangeBoids",
     engine,
@@ -107,6 +89,10 @@ export const createComputeShaders3d = (engine: WebGPUEngine) => {
         gridOffsets: { group: 0, binding: 2 },
         boidsIn: { group: 0, binding: 3 },
         boidsOut: { group: 0, binding: 4 },
+        templatePositions: { group: 0, binding: 5 },
+        templateNormals: { group: 0, binding: 6 },
+        renderPositions: { group: 0, binding: 7 },
+        renderNormals: { group: 0, binding: 8 },
       },
     }
   );
@@ -114,10 +100,9 @@ export const createComputeShaders3d = (engine: WebGPUEngine) => {
   return {
     generateBoidsComputeShader,
     boidComputeShader,
-    buildRenderBuffersComputeShader,
+    sumBlocksComputeShader,
+    scanSumsComputeShader,
     prefixSumComputeShader,
-    sumBucketsComputeShader,
-    addSumsComputeShader,
     rearrangeBoidsComputeShader,
   };
 };

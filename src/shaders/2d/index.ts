@@ -1,14 +1,13 @@
 import "@babylonjs/core/Engines/WebGPU/Extensions/engine.computeShader";
 import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
 import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
-import addSums from "./compute/addSums.wgsl?raw";
 import clearRaster from "./compute/clearRaster.wgsl?raw";
 import boids from "./compute/boids.wgsl?raw";
 import generateBoids from "./compute/generateBoids.wgsl?raw";
 import prefixSum from "./compute/prefixSum.wgsl?raw";
 import rearrangeBoids from "./compute/rearrangeBoids.wgsl?raw";
-import renderBoids from "./compute/renderBoids.wgsl?raw";
-import sumBuckets from "./compute/sumBuckets.wgsl?raw";
+import scanSums from "./compute/scanSums.wgsl?raw";
+import sumBlocks from "./compute/sumBlocks.wgsl?raw";
 
 export const createComputeShaders = (engine: WebGPUEngine) => {
   const clearRasterComputeShader = new ComputeShader(
@@ -53,6 +52,31 @@ export const createComputeShaders = (engine: WebGPUEngine) => {
     }
   );
 
+  const sumBlocksComputeShader = new ComputeShader(
+    "sumBlocks",
+    engine,
+    { computeSource: sumBlocks },
+    {
+      bindingsMapping: {
+        params: { group: 0, binding: 0 },
+        gridOffsetsIn: { group: 0, binding: 1 },
+        gridSums: { group: 0, binding: 2 },
+      },
+    }
+  );
+
+  const scanSumsComputeShader = new ComputeShader(
+    "scanSums",
+    engine,
+    { computeSource: scanSums },
+    {
+      bindingsMapping: {
+        params: { group: 0, binding: 0 },
+        gridSums: { group: 0, binding: 1 },
+      },
+    }
+  );
+
   const prefixSumComputeShader = new ComputeShader(
     "prefixSum",
     engine,
@@ -63,32 +87,6 @@ export const createComputeShaders = (engine: WebGPUEngine) => {
         gridOffsetsIn: { group: 0, binding: 1 },
         gridOffsetsOut: { group: 0, binding: 2 },
         gridSums: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const sumBucketsComputeShader = new ComputeShader(
-    "sumBuckets",
-    engine,
-    { computeSource: sumBuckets },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridSumsOut: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const addSumsComputeShader = new ComputeShader(
-    "addSums",
-    engine,
-    { computeSource: addSums },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSumsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
       },
     }
   );
@@ -104,19 +102,7 @@ export const createComputeShaders = (engine: WebGPUEngine) => {
         gridOffsets: { group: 0, binding: 2 },
         boidsIn: { group: 0, binding: 3 },
         boidsOut: { group: 0, binding: 4 },
-      },
-    }
-  );
-
-  const renderBoidsComputeShader = new ComputeShader(
-    "renderBoids",
-    engine,
-    { computeSource: renderBoids },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-        renderTarget: { group: 0, binding: 2 },
+        renderTarget: { group: 0, binding: 5 },
       },
     }
   );
@@ -125,10 +111,9 @@ export const createComputeShaders = (engine: WebGPUEngine) => {
     clearRasterComputeShader,
     generateBoidsComputeShader,
     boidComputeShader,
+    sumBlocksComputeShader,
+    scanSumsComputeShader,
     prefixSumComputeShader,
-    sumBucketsComputeShader,
-    addSumsComputeShader,
     rearrangeBoidsComputeShader,
-    renderBoidsComputeShader,
   };
 };

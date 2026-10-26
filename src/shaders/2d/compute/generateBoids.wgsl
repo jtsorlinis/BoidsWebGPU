@@ -17,9 +17,9 @@ fn rand_pcg(input: u32, min: f32, max: f32) -> f32 {
   return float * (max - min) + min;
 }
 
-@compute @workgroup_size(blockSize)
+@compute @workgroup_size(boidBlockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  let index : u32 = GlobalInvocationID.x;
+  let index = getBoidIndex(GlobalInvocationID);
 
   if (index >= params.numBoids) {
     return;
