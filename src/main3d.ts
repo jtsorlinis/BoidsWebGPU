@@ -29,7 +29,7 @@ import { createComputeShaders3d } from "./shaders/3d";
 const BOID_SCALE = 0.1;
 const SKYBOX_TEXTURE_SIZE = 64;
 const SKYBOX_SIZE = 100000;
-const SHADOW_MAP_SIZE = 4096;
+const SHADOW_MAP_SIZE = 8192;
 const SUN_INTENSITY = 3;
 const SUN_DIRECTION = new Vector3(
   -0.3213937660622072,
@@ -313,6 +313,7 @@ export const boids3d = async () => {
     sun.intensity = SUN_INTENSITY;
     sun.autoUpdateExtends = true;
     sun.autoCalcShadowZBounds = true;
+    sun.shadowOrthoScale = 8 / SHADOW_MAP_SIZE;
 
     const fillLight = new HemisphericLight(
       "fillLight",
@@ -324,7 +325,8 @@ export const boids3d = async () => {
     fillLight.intensity = FILL_LIGHT_INTENSITY;
 
     shadowGenerator = new ShadowGenerator(SHADOW_MAP_SIZE, sun);
-    shadowGenerator.usePoissonSampling = true;
+    shadowGenerator.usePercentageCloserFiltering = true;
+    shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
     shadowGenerator.bias = 0.05;
     shadowGenerator.normalBias = 0.4;
     shadowGenerator.darkness = 0;
@@ -496,17 +498,14 @@ export const boids3d = async () => {
     boidMesh.material = boidMaterial;
     shadowGenerator.addShadowCaster(boidMesh, false);
 
+    const overshoot = 2;
     boidMesh.buildBoundingInfo(
       new Vector3(
-        -xBound - BOID_SCALE,
-        -yBound - BOID_SCALE,
-        -zBound - BOID_SCALE,
+        -xBound - overshoot,
+        -yBound - overshoot,
+        -zBound - overshoot,
       ),
-      new Vector3(
-        xBound + BOID_SCALE,
-        yBound + BOID_SCALE,
-        zBound + BOID_SCALE,
-      ),
+      new Vector3(xBound + overshoot, yBound + overshoot, zBound + overshoot),
     );
 
     params.updateUInt("numBoids", numBoids);
