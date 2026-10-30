@@ -6,16 +6,12 @@ import {
 } from "three/webgpu";
 import {
   Fn,
-  instanceIndex,
   mix,
   normalWorldGeometry,
-  positionGeometry,
   pow,
   sRGBTransferEOTF,
-  select,
   smoothstep,
   storage,
-  uniform,
   vec3,
   vertexIndex,
   wgslFn,
@@ -41,12 +37,14 @@ export const kernels3d: BoidKernels = {
 };
 
 const boidVertex = wgslFn(`
-fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, local: vec3<f32>) -> vec3<f32> {
+fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, corner: u32) -> vec3<f32> {
   const halfPi = 1.57079632679;
   const boidScale = 0.1;
   let pos = vec3<f32>(posXY, posZVelX.x);
   let vel = vec3<f32>(posZVelX.y, velYZ);
 
+  // The triangle's corners: (-0.4, -0.5), (0, 0.5), (0.4, -0.5)
+  let local = vec3<f32>((f32(corner) - 1.0) * 0.4, select(-0.5, 0.5, corner == 1u), 0.0);
   var v = local * boidScale;
 
   let pitch = atan2(vel.y, length(vel.xz)) - halfPi;
@@ -59,21 +57,14 @@ fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, local: ve
 }
 `);
 
-// Boid triangles per instance. Instancing a single triangle leaves most of each vertex
-// warp idle, which made the boid and shadow draws ~3x slower
-export const boidsPerInstance = 256;
-
-// Places each boid's triangle from a boid buffer
+// Places each boid's triangle from a boid buffer, 3 vertices per boid
 export const createBoidMaterial = (
   boids: StorageBufferAttribute,
   numBoids: number,
 ) => {
   // Each boid is 3 vec2s, see PackedBoid3d
   const packed = storage(boids, "vec2", numBoids * 3).toReadOnly();
-  // The last instance's spare triangles repeat the last boid
-  const index = instanceIndex.mul(boidsPerInstance).add(vertexIndex.div(3));
-  const lastBoid = uniform(numBoids - 1, "uint");
-  const boid = select(index.greaterThan(lastBoid), lastBoid, index).mul(3);
+  const boid = vertexIndex.div(3).mul(3);
 
   // Single triangles, so their (flat) normals face whichever side is visible
   const material = new MeshStandardNodeMaterial({
@@ -87,7 +78,7 @@ export const createBoidMaterial = (
     posXY: packed.element(boid),
     posZVelX: packed.element(boid.add(1)),
     velYZ: packed.element(boid.add(2)),
-    local: positionGeometry,
+    corner: vertexIndex.mod(3),
   });
   return material;
 };
