@@ -51,18 +51,9 @@ fn rasterizeBoid(boid: Boid) {
   let v1 = worldToScreen(rotateLocalVertex(boidTriangle1, boid.vel) + boid.pos);
   let v2 = worldToScreen(rotateLocalVertex(boidTriangle2, boid.vel) + boid.pos);
 
-  // Only the pixels whose centres could be inside the triangle
+  // Only the on screen pixels whose centres could be inside the triangle
   let minBounds = ceil(min(v0, min(v1, v2)) - 0.5);
   let maxBounds = floor(max(v0, max(v1, v2)) - 0.5);
-  if (
-    maxBounds.x < 0.0 ||
-    maxBounds.y < 0.0 ||
-    minBounds.x >= f32(params.renderWidth) ||
-    minBounds.y >= f32(params.renderHeight)
-  ) {
-    return;
-  }
-
   let minX = max(0, i32(minBounds.x));
   let minY = max(0, i32(minBounds.y));
   let maxX = min(i32(params.renderWidth) - 1, i32(maxBounds.x));

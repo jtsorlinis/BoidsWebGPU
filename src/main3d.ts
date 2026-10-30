@@ -24,33 +24,9 @@ import {
 } from "three/tsl";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import { createCamera3D } from "./cameras";
-import {
-  type GPUContext,
-  Params,
-  createStorageBuffer,
-  shareWithRenderer,
-} from "./gpu";
-import {
-  PrefixSum,
-  blockCells,
-  boidBlockSize,
-  boidInclude3d,
-  getDispatchSize,
-  searchBlockSize3d,
-} from "./shaders";
-import {
-  createBoidMaterial,
-  createComputeShaders3d,
-  skyNode,
-} from "./shaders/3d";
-
-const edgeMargin = 0.5;
-const maxSpeed = 2;
-const visualRange = 0.5;
-const minDistance = 0.15;
-const cohesionFactor = 2;
-const alignmentFactor = 5;
-const separationFactor = 1;
+import { createBoidCompute, edgeMargin, visualRange } from "./compute";
+import { type GPUContext, shareWithRenderer } from "./gpu";
+import { createBoidMaterial, kernels3d, skyNode } from "./shaders/3d";
 
 const sunDirection = new Vector3(
   -0.3213937660622072,
@@ -73,44 +49,10 @@ export const createSim = async (
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PCFShadowMap;
 
-  const maxBlocks = device.limits.maxComputeWorkgroupsPerDimension;
-  const maxBufferSize = Math.min(
-    device.limits.maxStorageBufferBindingSize,
-    device.limits.maxBufferSize,
-  );
-  const boidLimit = Math.min(256 * maxBlocks, Math.floor(maxBufferSize / 24));
-
-  const params = new Params(device, {
-    numBoids: "u32",
-    xBound: "f32",
-    yBound: "f32",
+  const compute = await createBoidCompute(device, kernels3d, {
     zBound: "f32",
-    maxSpeed: "f32",
-    minSpeed: "f32",
-    turnSpeed: "f32",
-    visualRangeSq: "f32",
-    minDistanceSq: "f32",
-    cohesionFactor: "f32",
-    alignmentFactor: "f32",
-    separationFactor: "f32",
-    dt: "f32",
-    gridDimX: "u32",
-    gridDimY: "u32",
     gridDimZ: "u32",
-    gridInverseCellSize: "f32",
-    gridTotalCells: "u32",
-    boidStride: "u32",
-    updateGroupsX: "u32",
-    rngSeed: "u32",
-    blocks: "u32",
   });
-
-  const include = boidInclude3d(params.wgsl);
-  const [{ generateBoidsShader, rearrangeBoidsShader, boidsShader }, prefixSum] =
-    await Promise.all([
-      createComputeShaders3d(device, include),
-      PrefixSum.create(device, include),
-    ]);
 
   const scene = new Scene();
   scene.backgroundNode = skyNode;
@@ -170,21 +112,11 @@ export const createSim = async (
 
   let numBoids = initialBoids;
   let pendingNumBoids = 0;
-  let blocks = 0;
-  let boidGroupsX = 0;
-  let boidGroupsY = 0;
-  let updateGroupsX = 0;
-  let updateGroupsY = 0;
   let viewWidth = 0;
   let viewHeight = 0;
 
-  // The boids kernel reads one boid buffer and writes the next frame's boids to
-  // the other, so there's a set of bind groups (and a material) for each way round
-  let simBuffers: GPUBuffer[] = [];
-  let rearrangeBindGroups: GPUBindGroup[] = [];
-  let boidsBindGroups: GPUBindGroup[] = [];
+  // One for each boid buffer, the boids are drawn from whichever was just written
   let boidMaterials: MeshStandardNodeMaterial[] = [];
-  let current = 0;
 
   const updateShadows = (spaceBounds: number) => {
     const shadowDistance = spaceBounds * 6.5;
@@ -222,115 +154,22 @@ export const createSim = async (
     const gridDimX = Math.floor((xBound * 2) / visualRange) + 20;
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
     const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
-    const gridTotalCells = gridDimX * gridDimY * gridDimZ;
-    blocks = Math.ceil(gridTotalCells / blockCells);
 
-    [boidGroupsX, boidGroupsY] = getDispatchSize(numBoids, boidBlockSize, maxBlocks);
-    [updateGroupsX, updateGroupsY] = getDispatchSize(
-      numBoids,
-      searchBlockSize3d,
-      maxBlocks,
-    );
-
-    params.set("numBoids", numBoids);
-    params.set("xBound", xBound);
-    params.set("yBound", yBound);
-    params.set("zBound", zBound);
-    params.set("maxSpeed", maxSpeed);
-    params.set("minSpeed", maxSpeed * 0.75);
-    params.set("turnSpeed", maxSpeed * 3);
-    params.set("visualRangeSq", visualRange * visualRange);
-    params.set("minDistanceSq", minDistance * minDistance);
-    params.set("cohesionFactor", cohesionFactor);
-    params.set("alignmentFactor", alignmentFactor);
-    params.set("separationFactor", separationFactor);
-    params.set("gridDimX", gridDimX);
-    params.set("gridDimY", gridDimY);
-    params.set("gridDimZ", gridDimZ);
-    params.set("gridInverseCellSize", 1 / visualRange);
-    params.set("gridTotalCells", gridTotalCells);
-    params.set("boidStride", boidGroupsX * boidBlockSize);
-    params.set("updateGroupsX", updateGroupsX);
-    params.set("rngSeed", Math.floor(Math.random() * 10000000));
-    params.set("blocks", blocks);
-    params.update();
-
-    const boidBuffers = [
-      createStorageBuffer(device, numBoids * 24),
-      createStorageBuffer(device, numBoids * 24),
-    ];
-    const gridBuffer = createStorageBuffer(device, numBoids * 4);
-    const sortedIndexBuffer = createStorageBuffer(device, numBoids * 4);
-    // Cell counts, which the prefix sum turns into offsets
-    const gridOffsetBufferIn = createStorageBuffer(device, gridTotalCells * 4);
-    const gridOffsetBuffer = createStorageBuffer(device, gridTotalCells * 4);
-    const gridSumsBuffer = createStorageBuffer(device, blocks * 4);
-    simBuffers = [
-      ...boidBuffers,
-      gridBuffer,
-      sortedIndexBuffer,
-      gridOffsetBufferIn,
-      gridOffsetBuffer,
-      gridSumsBuffer,
-    ];
-
-    prefixSum.setBuffers({
-      params: params.buffer,
-      gridOffsetsIn: gridOffsetBufferIn,
-      gridOffsets: gridOffsetBuffer,
-      gridSums: gridSumsBuffer,
+    for (const material of boidMaterials) material.dispose();
+    compute.setup(numBoids, gridDimX * gridDimY * gridDimZ, {
+      xBound,
+      yBound,
+      zBound,
+      gridDimX,
+      gridDimY,
+      gridDimZ,
     });
-    rearrangeBindGroups = boidBuffers.map((boids) =>
-      rearrangeBoidsShader.createBindGroup({
-        params: params.buffer,
-        grid: gridBuffer,
-        gridOffsets: gridOffsetBuffer,
-        boids,
-        sortedIndices: sortedIndexBuffer,
-      }),
-    );
-    boidsBindGroups = boidBuffers.map((boidsIn, i) =>
-      boidsShader.createBindGroup({
-        params: params.buffer,
-        boidsIn,
-        boidsOut: boidBuffers[1 - i],
-        sortedIndices: sortedIndexBuffer,
-        gridOffsets: gridOffsetBuffer,
-        gridOffsetsIn: gridOffsetBufferIn,
-        grid: gridBuffer,
-      }),
-    );
-    current = 0;
 
-    boidMaterials = boidBuffers.map((boids) =>
+    boidMaterials = compute.boidBuffers.map((boids) =>
       createBoidMaterial(shareWithRenderer(renderer, boids, 2), numBoids),
     );
-    boidMesh.material = boidMaterials[current];
+    boidMesh.material = boidMaterials[compute.current];
     boidMesh.count = numBoids;
-
-    // Generate boids on GPU, also bins them into the (zero initialised) grid
-    const encoder = device.createCommandEncoder();
-    const pass = encoder.beginComputePass();
-    generateBoidsShader.dispatch(
-      pass,
-      generateBoidsShader.createBindGroup({
-        params: params.buffer,
-        boids: boidBuffers[0],
-        gridOffsets: gridOffsetBufferIn,
-        grid: gridBuffer,
-      }),
-      boidGroupsX,
-      boidGroupsY,
-    );
-    pass.end();
-    device.queue.submit([encoder.finish()]);
-  };
-
-  const disposeSimResources = () => {
-    for (const material of boidMaterials) material.dispose();
-    for (const buffer of simBuffers) buffer.destroy();
-    boidMaterials = [];
-    simBuffers = [];
   };
 
   setup();
@@ -340,7 +179,6 @@ export const createSim = async (
     if (pendingNumBoids > 0) {
       numBoids = pendingNumBoids;
       pendingNumBoids = 0;
-      disposeSimResources();
       setup();
     }
 
@@ -355,46 +193,31 @@ export const createSim = async (
     }
     controls.update(deltaTime);
 
-    params.set("dt", deltaTime);
-    params.update();
-
     const encoder = device.createCommandEncoder();
-    const pass = encoder.beginComputePass();
-    prefixSum.dispatch(pass, blocks);
-    // Sort boid indices by cell
-    rearrangeBoidsShader.dispatch(
-      pass,
-      rearrangeBindGroups[current],
-      boidGroupsX,
-      boidGroupsY,
-    );
-    // Compute boid behaviours
-    boidsShader.dispatch(pass, boidsBindGroups[current], updateGroupsX, updateGroupsY);
-    pass.end();
+    compute.encode(encoder, deltaTime);
     device.queue.submit([encoder.finish()]);
 
     // Draw the boids just written
-    current = 1 - current;
-    boidMesh.material = boidMaterials[current];
+    boidMesh.material = boidMaterials[compute.current];
     renderer.render(scene, camera);
   };
 
   return {
-    boidLimit,
+    boidLimit: compute.boidLimit,
     frame,
     setNumBoids: (count: number) => {
-      pendingNumBoids = Math.min(count, boidLimit);
+      pendingNumBoids = Math.min(count, compute.boidLimit);
     },
     setAvoidMouse: () => {},
     dispose: () => {
       abort.abort();
-      disposeSimResources();
+      for (const material of boidMaterials) material.dispose();
+      compute.dispose();
       csm.dispose();
       sun.shadow.dispose();
       floorGeometry.dispose();
       floorMaterial.dispose();
       boidGeometry.dispose();
-      params.dispose();
     },
   };
 };

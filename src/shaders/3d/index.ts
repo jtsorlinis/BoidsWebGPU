@@ -17,41 +17,24 @@ import {
   vec3,
   wgslFn,
 } from "three/tsl";
-import { ComputeShader } from "../../gpu";
+import type { BoidKernels } from "..";
+import include from "./boid3d.wgsl?raw";
 import boids3d from "./compute/boids3d.wgsl?raw";
 import generateBoids3d from "./compute/generateBoids3d.wgsl?raw";
 import rearrangeBoids3d from "./compute/rearrangeBoids3d.wgsl?raw";
 
-export const createComputeShaders3d = async (
-  device: GPUDevice,
-  include: string,
-) => {
-  const [generateBoidsShader, rearrangeBoidsShader, boidsShader] =
-    await Promise.all([
-      ComputeShader.create(
-        device,
-        "generateBoids3d",
-        `${generateBoids3d}\n${include}`,
-        ["params", "boids", "gridOffsets", "grid"],
-      ),
-      ComputeShader.create(
-        device,
-        "rearrangeBoids3d",
-        `${rearrangeBoids3d}\n${include}`,
-        ["params", "grid", "gridOffsets", "boids", "sortedIndices"],
-      ),
-      ComputeShader.create(device, "boids3d", `${boids3d}\n${include}`, [
-        "params",
-        "boidsIn",
-        "boidsOut",
-        "sortedIndices",
-        "gridOffsets",
-        "gridOffsetsIn",
-        "grid",
-      ]),
-    ]);
-
-  return { generateBoidsShader, rearrangeBoidsShader, boidsShader };
+export const kernels3d: BoidKernels = {
+  label: "3d",
+  include,
+  generateBoids: generateBoids3d,
+  rearrangeBoids: rearrangeBoids3d,
+  boids: boids3d,
+  rearrangeBindings: ["params", "grid", "gridOffsets", "boids", "sortedIndices"],
+  // A PackedBoid3d
+  boidBytes: 24,
+  searchBlockSize: 64,
+  tileSize: 160,
+  boidLimitPerGroup: 256,
 };
 
 const boidVertex = wgslFn(`

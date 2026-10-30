@@ -7,13 +7,26 @@ import prefixSum from "./compute/prefixSum.wgsl?raw";
 // Per-boid kernels
 export const boidBlockSize = 256;
 // Prefix sum kernels, each group covers 4 rows of blockSize cells
-export const blockSize = 256;
+const blockSize = 256;
 export const blockCells = blockSize * 4;
-// Neighbour search kernels, each group stages its neighbour rows into a shared tile
-export const searchBlockSize2d = 128;
-export const searchBlockSize3d = 64;
-const tileSize2d = 256;
-const tileSize3d = 160;
+
+// A view's (2D or 3D) boid kernels, and what running them needs to know
+export type BoidKernels = {
+  label: string;
+  // The view's Boid struct and getGridID, shared by its kernels
+  include: string;
+  generateBoids: string;
+  rearrangeBoids: string;
+  boids: string;
+  // The one kernel whose bindings differ, 2D's also draws into a raster
+  rearrangeBindings: readonly string[];
+  boidBytes: number;
+  // Neighbour search kernels, each group stages its neighbour rows into a shared tile
+  searchBlockSize: number;
+  tileSize: number;
+  // Boid limit, as a multiple of the groups a dispatch dimension can have
+  boidLimitPerGroup: number;
+};
 
 // Kernels spill into a second dispatch dimension past maxGroups groups, so
 // they index threads with groupsX * groupSize as the row stride
@@ -27,86 +40,34 @@ export const getDispatchSize = (
   return [Math.ceil(groups / groupsY), groupsY] as const;
 };
 
-// Shared by every 2D kernel
-export const boidInclude2d = (params: string) => `
+// Shared by every boid kernel
+export const boidInclude = (params: string, kernels: BoidKernels) => `
 const boidBlockSize: u32 = ${boidBlockSize};
 const blockSize: u32 = ${blockSize};
 const blockCells: u32 = ${blockCells};
-const searchBlockSize: u32 = ${searchBlockSize2d};
-const tileSize: u32 = ${tileSize2d};
+const searchBlockSize: u32 = ${kernels.searchBlockSize};
+const tileSize: u32 = ${kernels.tileSize};
 
 ${params}
-
-struct Boid {
-  pos : vec2<f32>,
-  vel : vec2<f32>,
-};
-
-// Shared so every kernel that bins a boid gets the exact same cell
-fn getGridID(pos: vec2<f32>) -> u32 {
-  let x = i32(floor(pos.x * params.gridInverseCellSize)) + i32(params.gridDimX / 2u);
-  let y = i32(floor(pos.y * params.gridInverseCellSize)) + i32(params.gridDimY / 2u);
-  return params.gridDimX * u32(y) + u32(x);
-}
 
 fn getBoidIndex(id: vec3<u32>) -> u32 {
   return id.y * params.boidStride + id.x;
 }
+
+// Stateless random generation
+fn pcg_hash(input: u32) -> u32 {
+  let state = input * 747796405u + 2891336453u;
+  let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+fn rand_pcg(input: u32, min: f32, max: f32) -> f32 {
+  let float = f32(pcg_hash(input)) / 4294967296.0;
+  return float * (max - min) + min;
+}
+
+${kernels.include}
 `;
-
-// Shared by every 3D kernel
-export const boidInclude3d = (params: string) => `
-const boidBlockSize: u32 = ${boidBlockSize};
-const blockSize: u32 = ${blockSize};
-const blockCells: u32 = ${blockCells};
-const searchBlockSize: u32 = ${searchBlockSize3d};
-const tileSize: u32 = ${tileSize3d};
-
-${params}
-
-struct Boid3d {
-  pos : vec3<f32>,
-  vel : vec3<f32>,
-};
-
-// vec3s are 16 byte aligned in storage, so boids are stored as 3 vec2s
-// (24 bytes instead of 32) and unpacked into Boid3d
-struct PackedBoid3d {
-  posXY : vec2<f32>,
-  posZVelX : vec2<f32>,
-  velYZ : vec2<f32>,
-};
-
-fn unpackBoid(boid: PackedBoid3d) -> Boid3d {
-  return Boid3d(
-    vec3<f32>(boid.posXY, boid.posZVelX.x),
-    vec3<f32>(boid.posZVelX.y, boid.velYZ),
-  );
-}
-
-fn packBoid(boid: Boid3d) -> PackedBoid3d {
-  return PackedBoid3d(boid.pos.xy, vec2<f32>(boid.pos.z, boid.vel.x), boid.vel.yz);
-}
-
-// Shared so every kernel that bins a boid gets the exact same cell
-fn getGridID(pos: vec3<f32>) -> u32 {
-  let x = i32(floor(pos.x * params.gridInverseCellSize)) + i32(params.gridDimX / 2u);
-  let y = i32(floor(pos.y * params.gridInverseCellSize)) + i32(params.gridDimY / 2u);
-  let z = i32(floor(pos.z * params.gridInverseCellSize)) + i32(params.gridDimZ / 2u);
-  return params.gridDimX * params.gridDimY * u32(z) + params.gridDimX * u32(y) + u32(x);
-}
-
-fn getBoidIndex(id: vec3<u32>) -> u32 {
-  return id.y * params.boidStride + id.x;
-}
-`;
-
-type PrefixSumBuffers = {
-  params: GPUBuffer;
-  gridOffsetsIn: GPUBuffer;
-  gridOffsets: GPUBuffer;
-  gridSums: GPUBuffer;
-};
 
 // Generates the grid offsets (prefix sum) from the cell counts, for 2D and 3D alike:
 // sums each block of cells, scans the sums, then scans each block starting from its sum
@@ -135,15 +96,14 @@ export class PrefixSum {
       ComputeShader.create(device, "prefixSum", `${prefixSum}\n${shared}`, [
         "params",
         "gridOffsetsIn",
-        "gridOffsetsOut",
+        "gridOffsets",
         "gridSums",
       ]),
     ]);
     return new PrefixSum(shaders);
   }
 
-  setBuffers({ params, gridOffsetsIn, gridOffsets, gridSums }: PrefixSumBuffers) {
-    const buffers = { params, gridOffsetsIn, gridOffsetsOut: gridOffsets, gridSums };
+  setBuffers(buffers: Record<string, GPUBuffer>) {
     this.bindGroups = this.shaders.map((shader) =>
       shader.createBindGroup(buffers),
     );

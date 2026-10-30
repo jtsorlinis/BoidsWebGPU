@@ -9,41 +9,30 @@ import {
   uvec2,
   vec4,
 } from "three/tsl";
-import { ComputeShader } from "../../gpu";
+import type { BoidKernels } from "..";
+import include from "./boid.wgsl?raw";
 import boids from "./compute/boids.wgsl?raw";
 import generateBoids from "./compute/generateBoids.wgsl?raw";
 import rearrangeBoids from "./compute/rearrangeBoids.wgsl?raw";
 
-export const createComputeShaders2d = async (
-  device: GPUDevice,
-  include: string,
-) => {
-  const [generateBoidsShader, rearrangeBoidsShader, boidsShader] =
-    await Promise.all([
-      ComputeShader.create(
-        device,
-        "generateBoids",
-        `${generateBoids}\n${include}`,
-        ["params", "boids", "gridOffsets", "grid"],
-      ),
-      ComputeShader.create(
-        device,
-        "rearrangeBoids",
-        `${rearrangeBoids}\n${include}`,
-        ["params", "grid", "gridOffsets", "boids", "sortedIndices", "raster"],
-      ),
-      ComputeShader.create(device, "boids", `${boids}\n${include}`, [
-        "params",
-        "boidsIn",
-        "boidsOut",
-        "sortedIndices",
-        "gridOffsets",
-        "gridOffsetsIn",
-        "grid",
-      ]),
-    ]);
-
-  return { generateBoidsShader, rearrangeBoidsShader, boidsShader };
+export const kernels2d: BoidKernels = {
+  label: "2d",
+  include,
+  generateBoids,
+  rearrangeBoids,
+  boids,
+  rearrangeBindings: [
+    "params",
+    "grid",
+    "gridOffsets",
+    "boids",
+    "sortedIndices",
+    "raster",
+  ],
+  boidBytes: 16,
+  searchBlockSize: 128,
+  tileSize: 256,
+  boidLimitPerGroup: 1024,
 };
 
 // Shows the raster rearrangeBoids draws into, one pixel per screen pixel. Pixels

@@ -107,7 +107,7 @@ export const shareWithRenderer = (
   return attribute;
 };
 
-type ParamType = "u32" | "f32" | "vec2<f32>";
+export type ParamType = "u32" | "f32" | "vec2<f32>";
 
 const paramSizes: Record<ParamType, number> = {
   u32: 4,

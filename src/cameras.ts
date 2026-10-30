@@ -1,10 +1,9 @@
-import type { PerspectiveCamera } from "three/webgpu";
+import { MathUtils, type PerspectiveCamera } from "three/webgpu";
+
+const { clamp, degToRad } = MathUtils;
 
 const pointerSensitivity = 0.1;
 const scrollSensitivity = 0.1;
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
 
 const moveTowards = (value: number, target: number, maxDelta: number) =>
   Math.abs(target - value) <= maxDelta
@@ -119,8 +118,9 @@ export const createCamera2D = (canvas: HTMLCanvasElement, signal: AbortSignal) =
 const keyRamp = 3;
 const moveSpeed = 10;
 const fastMultiplier = 3;
-const pitchLimit = 88;
-const lookSensitivity = 1.5;
+const pitchLimit = degToRad(88);
+// Radians per pixel dragged
+const lookSensitivity = degToRad(pointerSensitivity * 1.5);
 
 export const createCamera3D = (
   camera: PerspectiveCamera,
@@ -128,26 +128,16 @@ export const createCamera3D = (
   signal: AbortSignal,
 ) => {
   camera.rotation.order = "YXZ"; // Yaw, then pitch, with no roll
-  const rotation = { x: 0, y: 0 };
   const keyAxes = { x: 0, y: 0, z: 0 };
   const heldKeys = new Set<string>();
 
-  const applyRotation = () => {
-    camera.rotation.set(
-      (rotation.y * Math.PI) / 180,
-      (-rotation.x * Math.PI) / 180,
-      0,
-    );
-  };
-
   const drag = attachDrag(canvas, signal, (dx, dy) => {
-    rotation.x += dx * pointerSensitivity * lookSensitivity;
-    rotation.y = clamp(
-      rotation.y - dy * pointerSensitivity * lookSensitivity,
+    camera.rotation.y -= dx * lookSensitivity;
+    camera.rotation.x = clamp(
+      camera.rotation.x - dy * lookSensitivity,
       -pitchLimit,
       pitchLimit,
     );
-    applyRotation();
   });
 
   window.addEventListener(
@@ -179,9 +169,7 @@ export const createCamera3D = (
     // Puts the camera here, looking down the simulation's +z (three.js's -z)
     resetView: (z: number) => {
       camera.position.set(0, 0, z);
-      rotation.x = 0;
-      rotation.y = 0;
-      applyRotation();
+      camera.rotation.set(0, 0, 0);
     },
 
     update: (deltaTime: number) => {

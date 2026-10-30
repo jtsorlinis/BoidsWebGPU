@@ -23,7 +23,7 @@ const startSim = async (is3D: boolean) => {
   const start = ++starting;
   sim?.dispose();
   sim = null;
-  ui.setView(is3D, initialBoids);
+  ui.setView(is3D);
 
   const { createSim } = is3D
     ? await import("./main3d")

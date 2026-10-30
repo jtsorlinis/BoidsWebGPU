@@ -1,5 +1,8 @@
 const minExponent = 5;
+const minBoids = 1 << minExponent;
 const fpsInterval = 0.25;
+
+export const initialBoids = minBoids;
 
 const getElement = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -19,8 +22,8 @@ export const createUI = () => {
   const avoidToggle = getElement<HTMLInputElement>("avoid-toggle");
   const hint = getElement("hint");
 
-  let numBoids = 1 << minExponent;
-  let maxBoids = 1 << minExponent;
+  let numBoids = initialBoids;
+  let maxBoids = minBoids;
   let is3D = false;
   let frames = 0;
   let fpsTimer = 0;
@@ -31,17 +34,12 @@ export const createUI = () => {
     avoidMouseChanged: (_avoid: boolean) => {},
   };
 
-  // Slider position is log2 of the boid count, so each octave gets the same travel
-  const countFor = (exponent: number) => {
-    // Snap the far end to the exact limit, pow loses precision up there
-    if (exponent >= Math.log2(maxBoids) - 0.0001) {
-      return maxBoids;
-    }
-    return Math.min(
-      Math.max(Math.round(Math.pow(2, exponent)), 1 << minExponent),
-      maxBoids,
-    );
-  };
+  // Slider position is log2 of the boid count, so each octave gets the same travel.
+  // Snaps the far end to the exact limit, pow loses precision up there.
+  const countFor = (exponent: number) =>
+    exponent >= Math.log2(maxBoids) - 0.0001
+      ? maxBoids
+      : Math.round(Math.pow(2, exponent));
 
   const refresh = () => {
     const maxExponent = Math.log2(maxBoids);
@@ -54,7 +52,6 @@ export const createUI = () => {
     slider.style.setProperty("--fill", `${Math.max(0, fill) * 100}%`);
 
     countLabel.textContent = format(numBoids);
-    minLabel.textContent = format(1 << minExponent);
     maxLabel.textContent = format(maxBoids);
     view2D.classList.toggle("segment--selected", !is3D);
     view3D.classList.toggle("segment--selected", is3D);
@@ -88,14 +85,15 @@ export const createUI = () => {
     handlers.avoidMouseChanged(avoidToggle.checked);
   };
 
+  minLabel.textContent = format(minBoids);
   refresh();
 
   return {
     on: handlers,
 
-    setView: (view3D: boolean, count: number) => {
+    setView: (view3D: boolean) => {
       is3D = view3D;
-      numBoids = count;
+      numBoids = initialBoids;
       avoidToggle.checked = false;
       refresh();
     },
@@ -122,5 +120,3 @@ export const createUI = () => {
     },
   };
 };
-
-export const initialBoids = 1 << minExponent;
