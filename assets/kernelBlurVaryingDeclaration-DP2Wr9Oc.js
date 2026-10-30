@@ -1,1 +1,0 @@
-import{t as e}from"./shaderStore-D-XQlhUT.js";var t=`kernelBlurVaryingDeclaration`,n=`varying vec2 sampleCoord{X};`;e.IncludesShadersStore[t]||(e.IncludesShadersStore[t]=n);var r={name:t,shader:n};export{r as t};

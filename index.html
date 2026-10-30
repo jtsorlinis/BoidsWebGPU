@@ -4,54 +4,54 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WebGPU Boids</title>
-    <script type="module" crossorigin src="/BoidsWebGPU/assets/index-C9rRbr8X.js"></script>
-    <link rel="stylesheet" crossorigin href="/BoidsWebGPU/assets/index-9cKm52GS.css">
+    <script type="module" crossorigin src="/BoidsWebGPU/assets/index-D1F3hcLC.js"></script>
+    <link rel="modulepreload" crossorigin href="/BoidsWebGPU/assets/gpu-nS4QaLAx.js">
+    <link rel="stylesheet" crossorigin href="/BoidsWebGPU/assets/index-rMRN0wZV.css">
   </head>
   <body>
     <div id="loader">loading...</div>
-    <div id="ui">
-      <div id="fpsText">FPS: 00</div>
-      <hr />
-      <div id="boidText">Boids: 0</div>
+    <div class="card">
+      <div class="header">
+        <span class="title">Boids</span>
+        <span id="fps-badge" class="fps-badge">
+          <span id="fps" class="fps-value">0</span>
+          <span class="fps-unit">FPS</span>
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="row-label">View</span>
+        <div class="segmented">
+          <button id="view-2d" class="segment" tabindex="-1">2D</button>
+          <button id="view-3d" class="segment" tabindex="-1">3D</button>
+        </div>
+      </div>
+
+      <div class="row row--slider">
+        <span class="row-label">Count</span>
+        <span id="boid-count" class="row-value">32</span>
+      </div>
       <input
         type="range"
-        id="boidSlider"
+        id="boid-slider"
+        class="boid-slider"
         min="5"
-        max="26"
-        value="1"
-        step="0.01"
+        max="16"
+        step="any"
+        value="5"
+        tabindex="-1"
       />
-      <hr />
-      <span>Mode:</span>
-      <label>
-        <input
-          class="modeRadio"
-          type="radio"
-          id="radio2D"
-          name="mode"
-          value="2D"
-          checked
-        />
-        2D
-      </label>
-      <label for="3D">
-        <input
-          class="modeRadio"
-          type="radio"
-          id="radio3D"
-          name="mode"
-          value="3D"
-        />
-        3D
-      </label>
-      <div id="options2d">
-        <hr />
-        <label>
-          <input type="checkbox" id="avoidToggle" />
-          Avoid Mouse
-        </label>
+      <div class="slider-range">
+        <span id="boid-min">32</span>
+        <span id="boid-max">65,536</span>
       </div>
-      <div id="options3d"></div>
+
+      <label id="avoid-row" class="row">
+        <span class="row-label">Avoid mouse</span>
+        <input type="checkbox" id="avoid-toggle" class="toggle" tabindex="-1" />
+      </label>
+
+      <div id="hint" class="hint">Drag to pan · Scroll to zoom</div>
     </div>
     <a
       href="https://github.com/jtsorlinis/BoidsWebGPU"
@@ -70,6 +70,6 @@
         />
       </svg>
     </a>
-    <canvas id="renderCanvas" touch-action="none"> </canvas>
+    <canvas id="renderCanvas"></canvas>
   </body>
 </html>
