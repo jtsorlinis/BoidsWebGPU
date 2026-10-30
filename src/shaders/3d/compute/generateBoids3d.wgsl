@@ -1,5 +1,3 @@
-#include<boid3dInclude>
-
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read_write> boids : array<PackedBoid3d>;
 @binding(2) @group(0) var<storage, read_write> gridOffsets : array<atomic<u32>>;

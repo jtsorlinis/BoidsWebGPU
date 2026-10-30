@@ -1,677 +1,387 @@
-import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
-import { Constants } from "@babylonjs/core/Engines/constants";
-import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
-import "@babylonjs/core/Helpers/sceneHelpers";
-import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
-import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
-import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
-import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
-import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { RawCubeTexture } from "@babylonjs/core/Materials/Textures/rawCubeTexture";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Scene } from "@babylonjs/core/scene";
-import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
 import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DirectionalLight,
+  HemisphereLight,
+  Mesh,
+  MeshStandardNodeMaterial,
+  PCFShadowMap,
+  PerspectiveCamera,
+  PlaneGeometry,
+  SRGBColorSpace,
+  Scene,
+  Vector3,
+} from "three/webgpu";
+import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
+import { createCamera3D } from "./cameras";
+import {
+  type GPUContext,
+  Params,
+  createStorageBuffer,
+  shareWithRenderer,
+} from "./gpu";
+import {
+  PrefixSum,
   blockCells,
   boidBlockSize,
+  boidInclude3d,
   getDispatchSize,
   searchBlockSize3d,
-  setupIncludes,
 } from "./shaders";
-import { triangleMesh } from "./meshes/triangleMesh";
-import { createComputeShaders3d } from "./shaders/3d";
+import {
+  createBoidMaterial,
+  createComputeShaders3d,
+  skyNode,
+} from "./shaders/3d";
 
-const BOID_SCALE = 0.1;
-const SKYBOX_TEXTURE_SIZE = 64;
-const SKYBOX_SIZE = 100000;
-const SHADOW_MAP_SIZE = 8192;
-const SUN_INTENSITY = 3;
-const SUN_DIRECTION = new Vector3(
+const edgeMargin = 0.5;
+const maxSpeed = 2;
+const visualRange = 0.5;
+const minDistance = 0.15;
+const cohesionFactor = 2;
+const alignmentFactor = 5;
+const separationFactor = 1;
+
+// Unity's scene, in three.js's right handed space (z flipped). Unity's lighting has no
+// 1 / PI in its diffuse term, so its intensities are multiplied by PI here.
+const sunDirection = new Vector3(
   -0.3213937660622072,
   -0.7660444011712928,
-  0.5566704252156701,
+  -0.5566704252156701,
 );
-const FILL_LIGHT_INTENSITY = 0.4;
-const ZENITH_SKY = [0.45, 0.55, 0.71] as const;
-const HORIZON_SKY = [0.65, 0.76, 0.88] as const;
-const HORIZON_GLOW = [0.84, 0.92, 0.94] as const;
-const GROUND_SKY = [0.44, 0.42, 0.4] as const;
+const sunColour = new Color().setRGB(1, 0.95686275, 0.8392157, SRGBColorSpace);
+const sunIntensity = Math.PI;
+// Stands in for Unity's ambient light from the sky
+const ambientSky = new Color().setRGB(0.36, 0.45, 0.62, SRGBColorSpace);
+const ambientGround = new Color().setRGB(0.3, 0.28, 0.26, SRGBColorSpace);
+const ambientIntensity = Math.PI;
+const shadowMapSize = 8192;
 
-type BoidTemplateMesh = {
-  normals: Float32Array;
-  vertices: Float32Array;
-};
+export const createSim = async (
+  { device, renderer }: GPUContext,
+  canvas: HTMLCanvasElement,
+  initialBoids: number,
+) => {
+  renderer.outputColorSpace = SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFShadowMap;
 
-const packVec4Data = (data: Float32Array) => {
-  const vertexCount = data.length / 3;
-  const packed = new Float32Array(vertexCount * 4);
-
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-    const source = vertex * 3;
-    const target = vertex * 4;
-    packed[target] = data[source];
-    packed[target + 1] = data[source + 1];
-    packed[target + 2] = data[source + 2];
-  }
-
-  return packed;
-};
-
-const getRenderMeshData = (mesh: BoidTemplateMesh) => {
-  const vertexCount = mesh.vertices.length / 4;
-  const triangleCount = vertexCount / 3;
-  const positions = new Float32Array(vertexCount * 3);
-  const normals = new Float32Array(vertexCount * 3);
-
-  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
-    const source = vertex * 4;
-    const target = vertex * 3;
-    positions[target] = mesh.vertices[source] * BOID_SCALE;
-    positions[target + 1] = mesh.vertices[source + 1] * BOID_SCALE;
-    positions[target + 2] = mesh.vertices[source + 2] * BOID_SCALE;
-  }
-
-  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
-    const normalSource = triangle * 4;
-    const nx = mesh.normals[normalSource];
-    const ny = mesh.normals[normalSource + 1];
-    const nz = mesh.normals[normalSource + 2];
-    const target = triangle * 9;
-
-    for (let vertex = 0; vertex < 3; vertex += 1) {
-      const offset = target + vertex * 3;
-      normals[offset] = nx;
-      normals[offset + 1] = ny;
-      normals[offset + 2] = nz;
-    }
-  }
-
-  return { normals, positions };
-};
-
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-
-const smoothstep = (edge0: number, edge1: number, x: number) => {
-  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-};
-
-const getCubeDirection = (face: number, u: number, v: number) => {
-  switch (face) {
-    case 0:
-      return [1, -v, -u] as const;
-    case 1:
-      return [-1, -v, u] as const;
-    case 2:
-      return [u, 1, v] as const;
-    case 3:
-      return [u, -1, -v] as const;
-    case 4:
-      return [u, -v, 1] as const;
-    default:
-      return [-u, -v, -1] as const;
-  }
-};
-
-const sampleSkyboxColour = (x: number, y: number, z: number) => {
-  const length = Math.hypot(x, y, z);
-  const dirY = y / length;
-
-  const skyBlend = smoothstep(0.0, 0.95, dirY * 0.5 + 0.5);
-  const groundBlend = smoothstep(-0.08, 0.02, dirY);
-  const skyMix = Math.pow(skyBlend, 0.8);
-  const horizonGlow =
-    smoothstep(-0.01, 0.05, dirY) * (1 - smoothstep(0.08, 0.22, dirY));
-
-  const skyR = lerp(HORIZON_SKY[0], ZENITH_SKY[0], skyMix);
-  const skyG = lerp(HORIZON_SKY[1], ZENITH_SKY[1], skyMix);
-  const skyB = lerp(HORIZON_SKY[2], ZENITH_SKY[2], skyMix);
-  const baseR = lerp(GROUND_SKY[0], skyR, groundBlend);
-  const baseG = lerp(GROUND_SKY[1], skyG, groundBlend);
-  const baseB = lerp(GROUND_SKY[2], skyB, groundBlend);
-
-  return [
-    lerp(baseR, HORIZON_GLOW[0], horizonGlow * 0.7),
-    lerp(baseG, HORIZON_GLOW[1], horizonGlow * 0.7),
-    lerp(baseB, HORIZON_GLOW[2], horizonGlow * 0.7),
-  ] as const;
-};
-
-const createSkyboxTexture = (scene: Scene) => {
-  const faces: Uint8Array[] = [];
-
-  for (let face = 0; face < 6; face += 1) {
-    const data = new Uint8Array(SKYBOX_TEXTURE_SIZE * SKYBOX_TEXTURE_SIZE * 4);
-
-    for (let py = 0; py < SKYBOX_TEXTURE_SIZE; py += 1) {
-      for (let px = 0; px < SKYBOX_TEXTURE_SIZE; px += 1) {
-        const u = ((px + 0.5) / SKYBOX_TEXTURE_SIZE) * 2 - 1;
-        const v = ((py + 0.5) / SKYBOX_TEXTURE_SIZE) * 2 - 1;
-        const [dx, dy, dz] = getCubeDirection(face, u, v);
-        const [r, g, b] = sampleSkyboxColour(dx, dy, dz);
-        const offset = (py * SKYBOX_TEXTURE_SIZE + px) * 4;
-
-        data[offset] = Math.round(Math.max(0, Math.min(1, r)) * 255);
-        data[offset + 1] = Math.round(Math.max(0, Math.min(1, g)) * 255);
-        data[offset + 2] = Math.round(Math.max(0, Math.min(1, b)) * 255);
-        data[offset + 3] = 255;
-      }
-    }
-
-    faces.push(data);
-  }
-
-  return new RawCubeTexture(
-    scene,
-    faces,
-    SKYBOX_TEXTURE_SIZE,
-    undefined,
-    undefined,
-    true,
-  );
-};
-
-export const boids3d = async () => {
-  let numBoids = 32;
-  const edgeMargin = 0.5;
-  const maxSpeed = 2;
-  const visualRange = 0.5;
-  const minDistance = 0.15;
-  const cohesionFactor = 2;
-  const alignmentFactor = 5;
-  const separationFactor = 1;
-
-  const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
-  const boidText = document.getElementById("boidText") as HTMLElement;
-  const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
-  const fpsText = document.getElementById("fpsText") as HTMLElement;
-  const engine = new WebGPUEngine(canvas, {
-    setMaximumLimits: true,
-    enableAllFeatures: true,
-  });
-  await engine.initAsync();
-  document.getElementById("loader")?.remove();
-
-  setupIncludes();
-  const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
-  // Same limit as Unity, unless the render vertices (3 vec4 positions per
-  // boid) would be too big to bind
+  const maxBlocks = device.limits.maxComputeWorkgroupsPerDimension;
+  // Same limit as Unity, unless the boid buffers would be too big to bind
   const maxBufferSize = Math.min(
-    engine.currentLimits.maxStorageBufferBindingSize,
-    engine.currentLimits.maxBufferSize,
+    device.limits.maxStorageBufferBindingSize,
+    device.limits.maxBufferSize,
   );
-  const boidLimit = Math.min(
-    (1024 * maxBlocks) / 4,
-    Math.floor(maxBufferSize / (3 * 16)),
+  const boidLimit = Math.min(256 * maxBlocks, Math.floor(maxBufferSize / 24));
+
+  const params = new Params(device, {
+    numBoids: "u32",
+    xBound: "f32",
+    yBound: "f32",
+    zBound: "f32",
+    maxSpeed: "f32",
+    minSpeed: "f32",
+    turnSpeed: "f32",
+    visualRangeSq: "f32",
+    minDistanceSq: "f32",
+    cohesionFactor: "f32",
+    alignmentFactor: "f32",
+    separationFactor: "f32",
+    dt: "f32",
+    gridDimX: "u32",
+    gridDimY: "u32",
+    gridDimZ: "u32",
+    gridInverseCellSize: "f32",
+    gridTotalCells: "u32",
+    boidStride: "u32",
+    updateGroupsX: "u32",
+    rngSeed: "u32",
+    blocks: "u32",
+  });
+
+  const include = boidInclude3d(params.wgsl);
+  const [{ generateBoidsShader, rearrangeBoidsShader, boidsShader }, prefixSum] =
+    await Promise.all([
+      createComputeShaders3d(device, include),
+      PrefixSum.create(device, include),
+    ]);
+
+  // Scene
+  const scene = new Scene();
+  scene.backgroundNode = skyNode;
+
+  const camera = new PerspectiveCamera(60, canvas.width / canvas.height, 0.3, 1000);
+  const abort = new AbortController();
+  const controls = createCamera3D(camera, canvas, abort.signal);
+
+  const sun = new DirectionalLight(sunColour, sunIntensity);
+  sun.position.copy(sunDirection).negate();
+  sun.castShadow = true;
+  const mapSize = Math.min(shadowMapSize, device.limits.maxTextureDimension2D);
+  sun.shadow.mapSize.set(mapSize, mapSize);
+  sun.shadow.bias = -0.0001;
+  sun.shadow.normalBias = 0.01;
+  // Soft edges, PCF samples this many texels out
+  sun.shadow.radius = 2;
+  // Like Unity's 2 shadow cascades, the near one over the closest 10% of the shadow distance
+  const csm = new CSMShadowNode(sun, {
+    cascades: 2,
+    mode: "custom",
+    customSplitsCallback: (_cascades, _near, _far, breaks) => {
+      breaks.push(0.1, 1);
+    },
+  });
+  sun.shadow.shadowNode = csm;
+  scene.add(sun, sun.target);
+  scene.add(new HemisphereLight(ambientSky, ambientGround, ambientIntensity));
+
+  const floorGeometry = new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const floorMaterial = new MeshStandardNodeMaterial({
+    color: 0xffffff,
+    roughness: 0.5,
+    metalness: 0,
+  });
+  const floor = new Mesh(floorGeometry, floorMaterial);
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // A boid's triangle pointing up +y, instanced once per boid. The boid material
+  // places each one from the boid buffer.
+  const boidGeometry = new BufferGeometry();
+  boidGeometry.setAttribute(
+    "position",
+    new BufferAttribute(new Float32Array([-0.4, -0.5, 0, 0, 0.5, 0, 0.4, -0.5, 0]), 3),
   );
-  boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
+  const boidMesh = new Mesh(boidGeometry);
+  boidMesh.frustumCulled = false;
+  boidMesh.castShadow = true;
+  boidMesh.receiveShadow = true;
+  scene.add(boidMesh);
 
-  let scene!: Scene;
-  let spaceBounds = 0;
-  let camera!: UniversalCamera;
-  let shadowGenerator!: ShadowGenerator;
-  let ground!: Mesh;
-  let boidMaterial!: PBRMaterial;
-
-  const computeShaders = createComputeShaders3d(engine);
-  const {
-    generateBoidsComputeShader,
-    boidComputeShader,
-    sumBlocksComputeShader,
-    scanSumsComputeShader,
-    prefixSumComputeShader,
-    rearrangeBoidsComputeShader,
-  } = computeShaders;
-
-  // The grid carries over between frames, so every pass needs to be able to
-  // run before we start simulating
-  await Promise.all(
-    Object.values(computeShaders).map(
-      (shader) =>
-        new Promise<void>((resolve) => {
-          const check = () =>
-            shader.isReady() ? resolve() : setTimeout(check, 10);
-          check();
-        }),
-    ),
-  );
-
-  let boidsComputeBuffer: StorageBuffer | null = null;
-  let boidsComputeBuffer2: StorageBuffer | null = null;
-  let gridBuffer: StorageBuffer | null = null;
-  let gridOffsetsBuffer: StorageBuffer | null = null;
-  let gridOffsetsBuffer2: StorageBuffer | null = null;
-  let gridSumsBuffer: StorageBuffer | null = null;
-  let templatePositionsBuffer: StorageBuffer | null = null;
-  let templateNormalsBuffer: StorageBuffer | null = null;
-  let renderPositionsBuffer: StorageBuffer | null = null;
-  let renderNormalsBuffer: StorageBuffer | null = null;
-  let gridTotalCells = 0;
+  let numBoids = initialBoids;
+  let pendingNumBoids = 0;
   let blocks = 0;
   let boidGroupsX = 0;
   let boidGroupsY = 0;
   let updateGroupsX = 0;
   let updateGroupsY = 0;
-  let boidMesh: Mesh | null = null;
+  let viewWidth = 0;
+  let viewHeight = 0;
 
-  const params = new UniformBuffer(engine, undefined, false, "params");
-  params.addUniform("numBoids", 1);
-  params.addUniform("xBound", 1);
-  params.addUniform("yBound", 1);
-  params.addUniform("zBound", 1);
-  params.addUniform("maxSpeed", 1);
-  params.addUniform("minSpeed", 1);
-  params.addUniform("turnSpeed", 1);
-  params.addUniform("visualRangeSq", 1);
-  params.addUniform("minDistanceSq", 1);
-  params.addUniform("cohesionFactor", 1);
-  params.addUniform("alignmentFactor", 1);
-  params.addUniform("separationFactor", 1);
-  params.addUniform("dt", 1);
-  params.addUniform("gridDimX", 1);
-  params.addUniform("gridDimY", 1);
-  params.addUniform("gridDimZ", 1);
-  params.addUniform("gridInverseCellSize", 1);
-  params.addUniform("gridTotalCells", 1);
-  params.addUniform("boidStride", 1);
-  params.addUniform("updateGroupsX", 1);
-  params.addUniform("rngSeed", 1);
-  params.addUniform("blocks", 1);
-  params.addUniform("verticesPerBoid", 1);
-  params.addUniform("lightDir", 3);
+  // The boids kernel reads one boid buffer and writes the next frame's boids to
+  // the other, so there's a set of bind groups (and a material) for each way round
+  let simBuffers: GPUBuffer[] = [];
+  let rearrangeBindGroups: GPUBindGroup[] = [];
+  let boidsBindGroups: GPUBindGroup[] = [];
+  let boidMaterials: MeshStandardNodeMaterial[] = [];
+  let current = 0;
 
-  const createStaticScene = () => {
-    scene = new Scene(engine);
-    scene.clearColor = new Color4(
-      ZENITH_SKY[0],
-      ZENITH_SKY[1],
-      ZENITH_SKY[2],
-      1,
-    );
-    camera = new UniversalCamera("camera1", new Vector3(0, 0, -5), scene);
-    camera.minZ = 0.3;
-    camera.fov = Math.PI / 3;
-    camera.speed = 0.3;
-    camera.keysLeft = [65];
-    camera.keysRight = [68];
-    camera.keysUp = [87];
-    camera.keysDown = [83];
-    camera.keysUpward = [69];
-    camera.keysDownward = [81];
-    camera.attachControl();
-
-    // Scene lighting and shadow receiver
-    const sun = new DirectionalLight("sun", SUN_DIRECTION.clone(), scene);
-    sun.position = new Vector3(-5.4498076, 8.44, -21.35);
-    sun.diffuse = new Color3(1, 0.95686275, 0.8392157);
-    sun.specular = new Color3(1, 0.95686275, 0.8392157);
-    sun.intensity = SUN_INTENSITY;
-    sun.autoUpdateExtends = true;
-    sun.autoCalcShadowZBounds = true;
-    sun.shadowOrthoScale = 8 / SHADOW_MAP_SIZE;
-
-    const fillLight = new HemisphericLight(
-      "fillLight",
-      new Vector3(0, 1, 0),
-      scene,
-    );
-    fillLight.diffuse = new Color3(1, 1, 1);
-    fillLight.groundColor = new Color3(0.047, 0.043, 0.035);
-    fillLight.intensity = FILL_LIGHT_INTENSITY;
-
-    shadowGenerator = new ShadowGenerator(SHADOW_MAP_SIZE, sun);
-    shadowGenerator.usePercentageCloserFiltering = true;
-    shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
-    shadowGenerator.bias = 0.05;
-    shadowGenerator.normalBias = 0.4;
-    shadowGenerator.darkness = 0;
-
-    const skybox = scene.createDefaultSkybox(
-      createSkyboxTexture(scene),
-      false,
-      SKYBOX_SIZE,
-      0,
-      false,
-    );
-    if (skybox?.material) {
-      skybox.material.disableDepthWrite = true;
+  // Like Unity's shadow distance, the cascades cover the camera's view this far out
+  const updateShadows = (spaceBounds: number) => {
+    const shadowDistance = spaceBounds * 6.5;
+    csm.maxFar = shadowDistance;
+    // Far enough back towards the sun to catch every boid between it and the view
+    csm.lightMargin = spaceBounds * 4;
+    const far = csm.lightMargin + shadowDistance * 2;
+    for (const { shadow } of [sun, ...csm.lights]) {
+      shadow!.camera.far = far;
+      shadow!.camera.updateProjectionMatrix();
     }
-
-    ground = MeshBuilder.CreateGround(
-      "ground",
-      {
-        width: 1,
-        height: 1,
-      },
-      scene,
-    );
-    ground.receiveShadows = true;
-
-    const groundMaterial = new PBRMaterial("groundMat", scene);
-    groundMaterial.albedoColor = Color3.White();
-    groundMaterial.metallic = 0;
-    groundMaterial.roughness = 0.5;
-    ground.material = groundMaterial;
-
-    boidMaterial = new PBRMaterial("boidMat", scene);
-    boidMaterial.albedoColor = new Color3(1, 0.02, 0);
-    boidMaterial.metallic = 0;
-    boidMaterial.roughness = 0.5;
-    // Boids are a single triangle, so light whichever side is visible
-    boidMaterial.backFaceCulling = false;
-    boidMaterial.twoSidedLighting = true;
+    // The cascades are made on the first render, after that they need updating
+    if (csm.camera) {
+      csm.updateFrustums();
+    }
   };
 
-  const disposeSimulationResources = () => {
-    if (boidMesh) {
-      shadowGenerator.removeShadowCaster(boidMesh, false);
-      boidMesh.dispose();
-      boidMesh = null;
-    }
-
-    boidsComputeBuffer?.dispose();
-    boidsComputeBuffer2?.dispose();
-    gridBuffer?.dispose();
-    gridOffsetsBuffer?.dispose();
-    gridOffsetsBuffer2?.dispose();
-    gridSumsBuffer?.dispose();
-    templatePositionsBuffer?.dispose();
-    templateNormalsBuffer?.dispose();
-    renderPositionsBuffer?.dispose();
-    renderNormalsBuffer?.dispose();
-
-    boidsComputeBuffer = null;
-    boidsComputeBuffer2 = null;
-    gridBuffer = null;
-    gridOffsetsBuffer = null;
-    gridOffsetsBuffer2 = null;
-    gridSumsBuffer = null;
-    templatePositionsBuffer = null;
-    templateNormalsBuffer = null;
-    renderPositionsBuffer = null;
-    renderNormalsBuffer = null;
-  };
-
-  const rebuildSimulation = (resetCamera: boolean) => {
-    disposeSimulationResources();
-    boidText.innerHTML = `Boids: ${numBoids}`;
-
-    spaceBounds = Math.max(1, Math.pow(numBoids, 1 / 3) / 7.5 + edgeMargin);
-    if (resetCamera) {
-      camera.position.set(0, 0, -spaceBounds * 3.8);
-      camera.rotation.x = 0;
-      camera.rotation.y = 0;
-      camera.rotation.z = 0;
-      camera.cameraRotation.x = 0;
-      camera.cameraRotation.y = 0;
-    }
-    ground.scaling.x = spaceBounds * 4;
-    ground.scaling.z = spaceBounds * 4;
-    ground.position.y = -spaceBounds - 1;
+  const setup = () => {
+    const spaceBounds = Math.max(1, Math.pow(numBoids, 1 / 3) / 7.5 + edgeMargin);
+    controls.resetView(spaceBounds * 3.8);
+    floor.scale.set(spaceBounds * 4, 1, spaceBounds * 4);
+    floor.position.y = -spaceBounds - 1;
+    updateShadows(spaceBounds);
 
     const xBound = 2 * spaceBounds - edgeMargin;
     const yBound = spaceBounds - edgeMargin;
     const zBound = 2 * spaceBounds - edgeMargin;
 
+    // Spatial grid setup
     const gridDimX = Math.floor((xBound * 2) / visualRange) + 20;
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
     const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
-    gridTotalCells = gridDimX * gridDimY * gridDimZ;
+    const gridTotalCells = gridDimX * gridDimY * gridDimZ;
     blocks = Math.ceil(gridTotalCells / blockCells);
 
-    [boidGroupsX, boidGroupsY] = getDispatchSize(
-      numBoids,
-      boidBlockSize,
-      maxBlocks,
-    );
+    [boidGroupsX, boidGroupsY] = getDispatchSize(numBoids, boidBlockSize, maxBlocks);
     [updateGroupsX, updateGroupsY] = getDispatchSize(
       numBoids,
       searchBlockSize3d,
       maxBlocks,
     );
 
-    // Boids
-    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 24);
-    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 24);
-
-    // Create boid mesh
-    const renderMesh = getRenderMeshData(triangleMesh);
-    const verticesPerBoid = renderMesh.positions.length / 3;
-    const totalVertices = verticesPerBoid * numBoids;
-    templatePositionsBuffer = new StorageBuffer(
-      engine,
-      verticesPerBoid * 4 * 4,
-    );
-    templateNormalsBuffer = new StorageBuffer(engine, verticesPerBoid * 4 * 4);
-    renderPositionsBuffer = new StorageBuffer(
-      engine,
-      totalVertices * 4 * 4,
-      Constants.BUFFER_CREATIONFLAG_VERTEX |
-        Constants.BUFFER_CREATIONFLAG_READWRITE,
-    );
-    renderNormalsBuffer = new StorageBuffer(
-      engine,
-      totalVertices * 4 * 4,
-      Constants.BUFFER_CREATIONFLAG_VERTEX |
-        Constants.BUFFER_CREATIONFLAG_READWRITE,
-    );
-    templatePositionsBuffer.update(packVec4Data(renderMesh.positions));
-    templateNormalsBuffer.update(packVec4Data(renderMesh.normals));
-
-    boidMesh = new Mesh("boids", scene);
-    boidMesh.isUnIndexed = true;
-    boidMesh.setVerticesBuffer(
-      new VertexBuffer(
-        engine,
-        renderPositionsBuffer.getBuffer(),
-        VertexBuffer.PositionKind,
-        {
-          offset: 0,
-          size: 3,
-          stride: 4,
-          takeBufferOwnership: false,
-        },
-      ),
-      false,
-      totalVertices,
-    );
-    boidMesh.setVerticesBuffer(
-      new VertexBuffer(
-        engine,
-        renderNormalsBuffer.getBuffer(),
-        VertexBuffer.NormalKind,
-        {
-          offset: 0,
-          size: 3,
-          stride: 4,
-          takeBufferOwnership: false,
-        },
-      ),
-      false,
-    );
-    boidMesh.receiveShadows = true;
-    boidMesh.material = boidMaterial;
-    shadowGenerator.addShadowCaster(boidMesh, false);
-
-    const overshoot = 2;
-    boidMesh.buildBoundingInfo(
-      new Vector3(
-        -xBound - overshoot,
-        -yBound - overshoot,
-        -zBound - overshoot,
-      ),
-      new Vector3(xBound + overshoot, yBound + overshoot, zBound + overshoot),
-    );
-
-    params.updateUInt("numBoids", numBoids);
-    params.updateFloat("xBound", xBound);
-    params.updateFloat("yBound", yBound);
-    params.updateFloat("zBound", zBound);
-    params.updateFloat("maxSpeed", maxSpeed);
-    params.updateFloat("minSpeed", maxSpeed * 0.75);
-    params.updateFloat("turnSpeed", maxSpeed * 3);
-    params.updateFloat("visualRangeSq", visualRange * visualRange);
-    params.updateFloat("minDistanceSq", minDistance * minDistance);
-    params.updateFloat("cohesionFactor", cohesionFactor);
-    params.updateFloat("alignmentFactor", alignmentFactor);
-    params.updateFloat("separationFactor", separationFactor);
-    params.updateUInt("gridDimX", gridDimX);
-    params.updateUInt("gridDimY", gridDimY);
-    params.updateUInt("gridDimZ", gridDimZ);
-    params.updateFloat("gridInverseCellSize", 1 / visualRange);
-    params.updateUInt("gridTotalCells", gridTotalCells);
-    params.updateUInt("boidStride", boidGroupsX * boidBlockSize);
-    params.updateUInt("updateGroupsX", updateGroupsX);
-    params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
-    params.updateUInt("blocks", blocks);
-    params.updateUInt("verticesPerBoid", verticesPerBoid);
-    params.updateVector3("lightDir", SUN_DIRECTION);
-
+    params.set("numBoids", numBoids);
+    params.set("xBound", xBound);
+    params.set("yBound", yBound);
+    params.set("zBound", zBound);
+    params.set("maxSpeed", maxSpeed);
+    params.set("minSpeed", maxSpeed * 0.75);
+    params.set("turnSpeed", maxSpeed * 3);
+    params.set("visualRangeSq", visualRange * visualRange);
+    params.set("minDistanceSq", minDistance * minDistance);
+    params.set("cohesionFactor", cohesionFactor);
+    params.set("alignmentFactor", alignmentFactor);
+    params.set("separationFactor", separationFactor);
+    params.set("gridDimX", gridDimX);
+    params.set("gridDimY", gridDimY);
+    params.set("gridDimZ", gridDimZ);
+    params.set("gridInverseCellSize", 1 / visualRange);
+    params.set("gridTotalCells", gridTotalCells);
+    params.set("boidStride", boidGroupsX * boidBlockSize);
+    params.set("updateGroupsX", updateGroupsX);
+    params.set("rngSeed", Math.floor(Math.random() * 10000000));
+    params.set("blocks", blocks);
     params.update();
 
-    // Grid
-    gridBuffer = new StorageBuffer(engine, numBoids * 4);
-    gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
-    gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
-    gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
+    const boidBuffers = [
+      createStorageBuffer(device, numBoids * 24),
+      createStorageBuffer(device, numBoids * 24),
+    ];
+    const gridBuffer = createStorageBuffer(device, numBoids * 4);
+    const sortedIndexBuffer = createStorageBuffer(device, numBoids * 4);
+    // Cell counts, which the prefix sum turns into offsets
+    const gridOffsetBufferIn = createStorageBuffer(device, gridTotalCells * 4);
+    const gridOffsetBuffer = createStorageBuffer(device, gridTotalCells * 4);
+    const gridSumsBuffer = createStorageBuffer(device, blocks * 4);
+    simBuffers = [
+      ...boidBuffers,
+      gridBuffer,
+      sortedIndexBuffer,
+      gridOffsetBufferIn,
+      gridOffsetBuffer,
+      gridSumsBuffer,
+    ];
 
-    sumBlocksComputeShader.setUniformBuffer("params", params);
-    sumBlocksComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
-    sumBlocksComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
+    prefixSum.setBuffers({
+      params: params.buffer,
+      gridOffsetsIn: gridOffsetBufferIn,
+      gridOffsets: gridOffsetBuffer,
+      gridSums: gridSumsBuffer,
+    });
+    rearrangeBindGroups = boidBuffers.map((boids) =>
+      rearrangeBoidsShader.createBindGroup({
+        params: params.buffer,
+        grid: gridBuffer,
+        gridOffsets: gridOffsetBuffer,
+        boids,
+        sortedIndices: sortedIndexBuffer,
+      }),
+    );
+    boidsBindGroups = boidBuffers.map((boidsIn, i) =>
+      boidsShader.createBindGroup({
+        params: params.buffer,
+        boidsIn,
+        boidsOut: boidBuffers[1 - i],
+        sortedIndices: sortedIndexBuffer,
+        gridOffsets: gridOffsetBuffer,
+        gridOffsetsIn: gridOffsetBufferIn,
+        grid: gridBuffer,
+      }),
+    );
+    current = 0;
 
-    scanSumsComputeShader.setUniformBuffer("params", params);
-    scanSumsComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
-
-    prefixSumComputeShader.setUniformBuffer("params", params);
-    prefixSumComputeShader.setStorageBuffer(
-      "gridOffsetsOut",
-      gridOffsetsBuffer2,
+    boidMaterials = boidBuffers.map((boids) =>
+      createBoidMaterial(shareWithRenderer(renderer, boids, 2), numBoids),
     );
-    prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
-    prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
-
-    rearrangeBoidsComputeShader.setUniformBuffer("params", params);
-    rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "gridOffsets",
-      gridOffsetsBuffer2,
-    );
-    rearrangeBoidsComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer);
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "boidsOut",
-      boidsComputeBuffer2,
-    );
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "templatePositions",
-      templatePositionsBuffer,
-    );
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "templateNormals",
-      templateNormalsBuffer,
-    );
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "renderPositions",
-      renderPositionsBuffer,
-    );
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "renderNormals",
-      renderNormalsBuffer,
-    );
-
-    boidComputeShader.setUniformBuffer("params", params);
-    boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
-    boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
-    boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
-    boidComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
-    boidComputeShader.setStorageBuffer("grid", gridBuffer);
+    boidMesh.material = boidMaterials[current];
+    boidMesh.count = numBoids;
 
     // Generate boids on GPU, also bins them into the (zero initialised) grid
-    generateBoidsComputeShader.setUniformBuffer("params", params);
-    generateBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
-    generateBoidsComputeShader.setStorageBuffer(
-      "gridOffsets",
-      gridOffsetsBuffer,
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    generateBoidsShader.dispatch(
+      pass,
+      generateBoidsShader.createBindGroup({
+        params: params.buffer,
+        boids: boidBuffers[0],
+        gridOffsets: gridOffsetBufferIn,
+        grid: gridBuffer,
+      }),
+      boidGroupsX,
+      boidGroupsY,
     );
-    generateBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
-    generateBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
   };
 
-  let disposed = false;
-  const disposeAll = () => {
-    if (disposed) {
-      return;
+  const disposeSimResources = () => {
+    for (const material of boidMaterials) material.dispose();
+    for (const buffer of simBuffers) buffer.destroy();
+    boidMaterials = [];
+    simBuffers = [];
+  };
+
+  setup();
+
+  const frame = (deltaTime: number) => {
+    // Restart here rather than from the slider, so it happens at most once a frame
+    if (pendingNumBoids > 0) {
+      numBoids = pendingNumBoids;
+      pendingNumBoids = 0;
+      disposeSimResources();
+      setup();
     }
 
-    disposed = true;
-    disposeSimulationResources();
-    params.dispose();
-    scene.dispose();
-  };
-
-  createStaticScene();
-  rebuildSimulation(true);
-  engine.onDisposeObservable.add(disposeAll);
-
-  boidSlider.oninput = () => {
-    numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
-    if (numBoids > boidLimit) {
-      numBoids = boidLimit;
+    if (canvas.width !== viewWidth || canvas.height !== viewHeight) {
+      viewWidth = canvas.width;
+      viewHeight = canvas.height;
+      camera.aspect = viewWidth / viewHeight;
+      camera.updateProjectionMatrix();
+      if (csm.camera) {
+        csm.updateFrustums();
+      }
     }
-    rebuildSimulation(true);
-  };
+    controls.update(deltaTime);
 
-  canvas.onpointerdown = () => {
-    canvas.requestPointerLock();
-  };
-
-  canvas.onpointerup = () => {
-    document.exitPointerLock();
-  };
-
-  let debounce: number;
-  window.onresize = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(function () {
-      engine.resize();
-    }, 100);
-  };
-
-  engine.runRenderLoop(() => {
-    if (
-      !boidsComputeBuffer ||
-      !boidsComputeBuffer2 ||
-      !gridBuffer ||
-      !gridOffsetsBuffer ||
-      !gridOffsetsBuffer2 ||
-      !gridSumsBuffer
-    ) {
-      return;
-    }
-
-    const fps = engine.getFps();
-    fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
-
-    // Cap dt like Unity's maximum allowed timestep so a long frame (e.g. after
-    // switching tabs) can't throw boids outside the grid
-    params.updateFloat("dt", Math.min(engine.getDeltaTime() / 1000, 1 / 3));
+    params.set("dt", deltaTime);
     params.update();
 
-    // Generate offsets (prefix sum): sum each block of cells, scan the sums,
-    // then scan each block starting from its sum
-    sumBlocksComputeShader.dispatch(blocks, 1, 1);
-    scanSumsComputeShader.dispatch(1, 1, 1);
-    prefixSumComputeShader.dispatch(blocks, 1, 1);
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    prefixSum.dispatch(pass, blocks);
+    // Sort boid indices by cell
+    rearrangeBoidsShader.dispatch(
+      pass,
+      rearrangeBindGroups[current],
+      boidGroupsX,
+      boidGroupsY,
+    );
+    // Compute boid behaviours
+    boidsShader.dispatch(pass, boidsBindGroups[current], updateGroupsX, updateGroupsY);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
 
-    // Rearrange boids (and build their render vertices)
-    rearrangeBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
-    boidComputeShader.dispatch(updateGroupsX, updateGroupsY, 1);
-    scene.render();
-  });
+    // Draw the boids just written
+    current = 1 - current;
+    boidMesh.material = boidMaterials[current];
+    renderer.render(scene, camera);
+  };
 
-  return engine;
+  return {
+    boidLimit,
+    frame,
+    setNumBoids: (count: number) => {
+      pendingNumBoids = Math.min(count, boidLimit);
+    },
+    setAvoidMouse: () => {},
+    dispose: () => {
+      abort.abort();
+      disposeSimResources();
+      csm.dispose();
+      sun.shadow.dispose();
+      floorGeometry.dispose();
+      floorMaterial.dispose();
+      boidGeometry.dispose();
+      params.dispose();
+    },
+  };
 };

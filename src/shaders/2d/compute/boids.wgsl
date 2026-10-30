@@ -1,11 +1,10 @@
-#include<boidInclude>
-
 @binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read_write> boids : array<Boid>;
-@binding(2) @group(0) var<storage, read> boidsIn : array<Boid>;
-@binding(3) @group(0) var<storage, read> gridOffsets : array<u32>;
-@binding(4) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
-@binding(5) @group(0) var<storage, read_write> grid : array<u32>;
+@binding(1) @group(0) var<storage, read> boidsIn : array<Boid>;
+@binding(2) @group(0) var<storage, read_write> boidsOut : array<Boid>;
+@binding(3) @group(0) var<storage, read> sortedIndices : array<u32>;
+@binding(4) @group(0) var<storage, read> gridOffsets : array<u32>;
+@binding(5) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
+@binding(6) @group(0) var<storage, read_write> grid : array<u32>;
 
 // Neighbour rows staged once per group, as (pos, vel)
 var<workgroup> tile : array<vec4<f32>, tileSize>;
@@ -34,8 +33,8 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
   let cell = getGridID(pos);
 
   // Loop around own cell. The group's boids are sorted by cell, so each row
-  // they search together is one run of boids, which is staged into the tile
-  // when it fits
+  // they search together is one run of sorted indices, whose boids are staged
+  // into the tile when they fit
   for (var i: i32 = -1; i <= 1; i += 1) {
     let row = u32(i * i32(params.gridDimX));
     let start = gridOffsets[cell + row - 1u];
@@ -47,7 +46,7 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
     workgroupBarrier();
     if (tiled) {
       for (var k = localID; k < tileCount; k += searchBlockSize) {
-        let other = boidsIn[tileStart + k];
+        let other = boidsIn[sortedIndices[tileStart + k]];
         tile[k] = vec4<f32>(other.pos, other.vel);
       }
     }
@@ -71,8 +70,19 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
         addNeighbour(pos, other.xy, other.zw, &center, &close, &avgVel, &neighbours);
       }
     } else {
-      for (var j = start; j < end; j += 1u) {
-        let other = boidsIn[j];
+      var j = start;
+      for (; j + 3u < end; j += 4u) {
+        let o0 = boidsIn[sortedIndices[j]];
+        let o1 = boidsIn[sortedIndices[j + 1u]];
+        let o2 = boidsIn[sortedIndices[j + 2u]];
+        let o3 = boidsIn[sortedIndices[j + 3u]];
+        addNeighbour(pos, o0.pos, o0.vel, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, o1.pos, o1.vel, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, o2.pos, o2.vel, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, o3.pos, o3.vel, &center, &close, &avgVel, &neighbours);
+      }
+      for (; j < end; j += 1u) {
+        let other = boidsIn[sortedIndices[j]];
         addNeighbour(pos, other.pos, other.vel, &center, &close, &avgVel, &neighbours);
       }
     }
@@ -124,9 +134,9 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   // Threads past the last boid still take part in the staging, as copies of the last boid
   let last = min(first + searchBlockSize, params.numBoids) - 1u;
   let index = first + localID;
-  var boid = boidsIn[min(index, last)];
-  let firstCell = getGridID(boidsIn[first].pos);
-  let lastCell = getGridID(boidsIn[last].pos);
+  var boid = boidsIn[sortedIndices[min(index, last)]];
+  let firstCell = getGridID(boidsIn[sortedIndices[first]].pos);
+  let lastCell = getGridID(boidsIn[sortedIndices[last]].pos);
 
   mergedBehaviours(&boid, localID, firstCell, lastCell);
   limitSpeed(&boid);
@@ -137,8 +147,9 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
 
   boid.pos += boid.vel * params.dt;
 
+  // Written in cell order, so next frame's neighbour reads stay close together
   if (index < params.numBoids) {
-    boids[index] = boid;
+    boidsOut[index] = boid;
 
     // Bin the boid into next frame's grid, saving a separate update grid pass
     grid[index] = atomicAdd(&gridOffsetsIn[getGridID(boid.pos)], 1u);

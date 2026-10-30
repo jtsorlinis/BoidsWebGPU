@@ -1,42 +1,67 @@
 import "./style.css";
-import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
+import { initRenderer } from "./gpu";
+import { createUI, initialBoids } from "./ui";
 
-let is3D = false;
-let engine: WebGPUEngine | null;
-const optionsUI2D = document.getElementById("options2d") as HTMLElement;
-const optionsUI3D = document.getElementById("options3d") as HTMLElement;
-const modeRadio2D = document.getElementById("radio2D") as HTMLInputElement;
-const modeRadio3D = document.getElementById("radio3D") as HTMLInputElement;
-const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
+type Sim = Awaited<ReturnType<typeof import("./main2d").createSim>>;
 
-if (!navigator.gpu) {
-  document.body.innerHTML =
-    "<div id='loader'>WebGPU is not supported on this browser, please update to the latest version of Chrome</div>";
+const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
+const loader = document.getElementById("loader") as HTMLElement;
+
+const gpu = await initRenderer(canvas);
+if (!gpu) {
+  loader.textContent =
+    "WebGPU is not supported on this browser, please update to the latest version of Chrome";
+  throw new Error("WebGPU is not supported");
 }
+const { renderer } = gpu;
 
-modeRadio2D.onchange = () => {
-  is3D = false;
-  startScene();
+const ui = createUI();
+let sim: Sim | null = null;
+let starting = 0;
+
+// Each view starts over from the initial count, like loading its Unity scene
+const startSim = async (is3D: boolean) => {
+  const start = ++starting;
+  sim?.dispose();
+  sim = null;
+  ui.setView(is3D, initialBoids);
+
+  const { createSim } = is3D
+    ? await import("./main3d")
+    : await import("./main2d");
+  const next = await createSim(gpu, canvas, initialBoids);
+  // Switched view again while this one was compiling
+  if (start !== starting) {
+    next.dispose();
+    return;
+  }
+  sim = next;
+  ui.setLimit(sim.boidLimit);
+  loader.remove();
 };
-modeRadio3D.onchange = () => {
-  is3D = true;
-  startScene();
-};
 
-const startScene = async () => {
-  optionsUI2D.style.display = is3D ? "none" : "block";
-  optionsUI3D.style.display = is3D ? "block" : "none";
-  engine?.dispose();
-  engine = null;
+ui.on.viewChanged = startSim;
+ui.on.numBoidsChanged = (count) => sim?.setNumBoids(count);
+ui.on.avoidMouseChanged = (avoid) => sim?.setAvoidMouse(avoid);
 
-  boidSlider.valueAsNumber = 5;
-  if (is3D) {
-    const { boids3d } = await import("./main3d");
-    engine = await boids3d();
-  } else {
-    const { boids2d } = await import("./main2d");
-    engine = await boids2d();
+const resize = () => {
+  const width = Math.max(1, canvas.clientWidth);
+  const height = Math.max(1, canvas.clientHeight);
+  if (canvas.width !== width || canvas.height !== height) {
+    renderer.setSize(width, height, false);
   }
 };
+resize();
+await startSim(false);
 
-startScene();
+let lastTime: number | undefined;
+renderer.setAnimationLoop((time) => {
+  const deltaTime = lastTime === undefined ? 0 : (time - lastTime) / 1000;
+  lastTime = time;
+  ui.frame(deltaTime);
+
+  resize();
+  // Cap dt like Unity's maximum allowed timestep so a long frame (e.g. after
+  // switching tabs) can't throw boids outside the grid
+  sim?.frame(Math.min(deltaTime, 1 / 3));
+});

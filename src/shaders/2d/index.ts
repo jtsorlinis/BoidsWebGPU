@@ -1,119 +1,72 @@
-import "@babylonjs/core/Engines/WebGPU/Extensions/engine.computeShader";
-import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
-import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
-import clearRaster from "./compute/clearRaster.wgsl?raw";
+import { NodeMaterial, type StorageBufferAttribute } from "three/webgpu";
+import {
+  Fn,
+  screenCoordinate,
+  select,
+  storage,
+  uint,
+  unpackUnorm4x8,
+  uvec2,
+  vec4,
+} from "three/tsl";
+import { ComputeShader } from "../../gpu";
 import boids from "./compute/boids.wgsl?raw";
 import generateBoids from "./compute/generateBoids.wgsl?raw";
-import prefixSum from "./compute/prefixSum.wgsl?raw";
 import rearrangeBoids from "./compute/rearrangeBoids.wgsl?raw";
-import scanSums from "./compute/scanSums.wgsl?raw";
-import sumBlocks from "./compute/sumBlocks.wgsl?raw";
 
-export const createComputeShaders = (engine: WebGPUEngine) => {
-  const clearRasterComputeShader = new ComputeShader(
-    "clearRaster",
-    engine,
-    { computeSource: clearRaster },
-    {
-      bindingsMapping: {
-        renderTarget: { group: 0, binding: 0 },
-        params: { group: 0, binding: 1 },
-      },
-    }
-  );
+// include is boidInclude2d, for Params and the shared helpers
+export const createComputeShaders2d = async (
+  device: GPUDevice,
+  include: string,
+) => {
+  const [generateBoidsShader, rearrangeBoidsShader, boidsShader] =
+    await Promise.all([
+      ComputeShader.create(
+        device,
+        "generateBoids",
+        `${generateBoids}\n${include}`,
+        ["params", "boids", "gridOffsets", "grid"],
+      ),
+      ComputeShader.create(
+        device,
+        "rearrangeBoids",
+        `${rearrangeBoids}\n${include}`,
+        ["params", "grid", "gridOffsets", "boids", "sortedIndices", "raster"],
+      ),
+      ComputeShader.create(device, "boids", `${boids}\n${include}`, [
+        "params",
+        "boidsIn",
+        "boidsOut",
+        "sortedIndices",
+        "gridOffsets",
+        "gridOffsetsIn",
+        "grid",
+      ]),
+    ]);
 
-  const generateBoidsComputeShader = new ComputeShader(
-    "generateBoids",
-    engine,
-    { computeSource: generateBoids },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        grid: { group: 0, binding: 3 },
-      },
-    }
-  );
+  return { generateBoidsShader, rearrangeBoidsShader, boidsShader };
+};
 
-  const boidComputeShader = new ComputeShader(
-    "boids",
-    engine,
-    { computeSource: boids },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-        boidsIn: { group: 0, binding: 2 },
-        gridOffsets: { group: 0, binding: 3 },
-        gridOffsetsIn: { group: 0, binding: 4 },
-        grid: { group: 0, binding: 5 },
-      },
-    }
-  );
-
-  const sumBlocksComputeShader = new ComputeShader(
-    "sumBlocks",
-    engine,
-    { computeSource: sumBlocks },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsetsIn: { group: 0, binding: 1 },
-        gridSums: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const scanSumsComputeShader = new ComputeShader(
-    "scanSums",
-    engine,
-    { computeSource: scanSums },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSums: { group: 0, binding: 1 },
-      },
-    }
-  );
-
-  const prefixSumComputeShader = new ComputeShader(
-    "prefixSum",
-    engine,
-    { computeSource: prefixSum },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsetsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
-        gridSums: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const rearrangeBoidsComputeShader = new ComputeShader(
-    "rearrangeBoids",
-    engine,
-    { computeSource: rearrangeBoids },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        grid: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        boidsIn: { group: 0, binding: 3 },
-        boidsOut: { group: 0, binding: 4 },
-        renderTarget: { group: 0, binding: 5 },
-      },
-    }
-  );
-
-  return {
-    clearRasterComputeShader,
-    generateBoidsComputeShader,
-    boidComputeShader,
-    sumBlocksComputeShader,
-    scanSumsComputeShader,
-    prefixSumComputeShader,
-    rearrangeBoidsComputeShader,
-  };
+// Shows the raster rearrangeBoids draws into, one pixel per screen pixel. Pixels
+// no boid covered are still 0, and show the background.
+export const createRasterMaterial = (
+  raster: StorageBufferAttribute,
+  width: number,
+  height: number,
+  background: readonly [number, number, number],
+) => {
+  const pixels = storage(raster, "uint", width * height).toReadOnly();
+  const material = new NodeMaterial();
+  material.fragmentNode = Fn(() => {
+    // The raster's rows go from the bottom of the screen up
+    const pixel = uvec2(screenCoordinate);
+    const row = uint(height - 1).sub(pixel.y);
+    const packed = pixels.element(row.mul(width).add(pixel.x));
+    return select(
+      packed.equal(uint(0)),
+      vec4(...background, 1),
+      unpackUnorm4x8(packed),
+    );
+  })();
+  return material;
 };

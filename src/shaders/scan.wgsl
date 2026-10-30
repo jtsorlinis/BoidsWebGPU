@@ -1,4 +1,4 @@
-// Shared by the prefix sum kernels, after the boid include for Params and blockSize
+// Shared by the prefix sum kernels, which also get the boid include for Params and blockSize
 
 fn getCell(groupID: u32, localID: u32, row: u32) -> u32 {
   return groupID * blockCells + row * blockSize + localID;

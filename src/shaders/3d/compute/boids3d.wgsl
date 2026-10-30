@@ -1,11 +1,10 @@
-#include<boid3dInclude>
-
 @binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read_write> boids : array<PackedBoid3d>;
-@binding(2) @group(0) var<storage, read> boidsIn : array<PackedBoid3d>;
-@binding(3) @group(0) var<storage, read> gridOffsets : array<u32>;
-@binding(4) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
-@binding(5) @group(0) var<storage, read_write> grid : array<u32>;
+@binding(1) @group(0) var<storage, read> boidsIn : array<PackedBoid3d>;
+@binding(2) @group(0) var<storage, read_write> boidsOut : array<PackedBoid3d>;
+@binding(3) @group(0) var<storage, read> sortedIndices : array<u32>;
+@binding(4) @group(0) var<storage, read> gridOffsets : array<u32>;
+@binding(5) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
+@binding(6) @group(0) var<storage, read_write> grid : array<u32>;
 
 // Neighbour rows staged once per group, as (pos, vel.x) and vel.yz
 var<workgroup> tilePosVelX : array<vec4<f32>, tileSize>;
@@ -36,8 +35,8 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>, localID: u32, firstCell: u32, l
   let zStep = i32(params.gridDimX * params.gridDimY);
 
   // Loop around own cell (3x3x3 neighborhood). The group's boids are sorted
-  // by cell, so each row they search together is one run of boids, which is
-  // staged into the tile when it fits
+  // by cell, so each row they search together is one run of sorted indices,
+  // whose boids are staged into the tile when they fit
   for (var z: i32 = -1; z <= 1; z += 1) {
     for (var y: i32 = -1; y <= 1; y += 1) {
       let row = u32(z * zStep + y * i32(params.gridDimX));
@@ -50,7 +49,7 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>, localID: u32, firstCell: u32, l
       workgroupBarrier();
       if (tiled) {
         for (var k = localID; k < tileCount; k += searchBlockSize) {
-          let other = boidsIn[tileStart + k];
+          let other = boidsIn[sortedIndices[tileStart + k]];
           tilePosVelX[k] = vec4<f32>(other.posXY, other.posZVelX);
           tileVelYZ[k] = other.velYZ;
         }
@@ -79,8 +78,19 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>, localID: u32, firstCell: u32, l
           addNeighbour(pos, other.xyz, vec3<f32>(other.w, tileVelYZ[j]), &center, &close, &avgVel, &neighbours);
         }
       } else {
-        for (var j = start; j < end; j += 1u) {
-          let other = unpackBoid(boidsIn[j]);
+        var j = start;
+        for (; j + 3u < end; j += 4u) {
+          let o0 = unpackBoid(boidsIn[sortedIndices[j]]);
+          let o1 = unpackBoid(boidsIn[sortedIndices[j + 1u]]);
+          let o2 = unpackBoid(boidsIn[sortedIndices[j + 2u]]);
+          let o3 = unpackBoid(boidsIn[sortedIndices[j + 3u]]);
+          addNeighbour(pos, o0.pos, o0.vel, &center, &close, &avgVel, &neighbours);
+          addNeighbour(pos, o1.pos, o1.vel, &center, &close, &avgVel, &neighbours);
+          addNeighbour(pos, o2.pos, o2.vel, &center, &close, &avgVel, &neighbours);
+          addNeighbour(pos, o3.pos, o3.vel, &center, &close, &avgVel, &neighbours);
+        }
+        for (; j < end; j += 1u) {
+          let other = unpackBoid(boidsIn[sortedIndices[j]]);
           addNeighbour(pos, other.pos, other.vel, &center, &close, &avgVel, &neighbours);
         }
       }
@@ -126,9 +136,9 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   // Threads past the last boid still take part in the staging, as copies of the last boid
   let last = min(first + searchBlockSize, params.numBoids) - 1u;
   let index = first + localID;
-  var boid = unpackBoid(boidsIn[min(index, last)]);
-  let firstCell = getGridID(unpackBoid(boidsIn[first]).pos);
-  let lastCell = getGridID(unpackBoid(boidsIn[last]).pos);
+  var boid = unpackBoid(boidsIn[sortedIndices[min(index, last)]]);
+  let firstCell = getGridID(unpackBoid(boidsIn[sortedIndices[first]]).pos);
+  let lastCell = getGridID(unpackBoid(boidsIn[sortedIndices[last]]).pos);
 
   mergedBehaviours(&boid, localID, firstCell, lastCell);
   limitSpeed(&boid);
@@ -136,8 +146,9 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
 
   boid.pos += boid.vel * params.dt;
 
+  // Written in cell order, so next frame's neighbour reads stay close together
   if (index < params.numBoids) {
-    boids[index] = packBoid(boid);
+    boidsOut[index] = packBoid(boid);
 
     // Bin the boid into next frame's grid, saving a separate update grid pass
     grid[index] = atomicAdd(&gridOffsetsIn[getGridID(boid.pos)], 1u);

@@ -1,417 +1,334 @@
-import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
-import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
-import { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
-import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Scalar } from "@babylonjs/core/Maths/math.scalar";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Scene } from "@babylonjs/core/scene";
-import { StorageBuffer } from "@babylonjs/core/Buffers/storageBuffer";
-import { RawTexture } from "@babylonjs/core/Materials/Textures/rawTexture";
-import { Texture } from "@babylonjs/core/Materials/Textures/texture";
-import { Layer } from "@babylonjs/core/Layers/layer";
+import { LinearSRGBColorSpace, NodeMaterial, QuadMesh } from "three/webgpu";
+import { createCamera2D } from "./cameras";
 import {
+  type GPUContext,
+  Params,
+  createStorageBuffer,
+  shareWithRenderer,
+} from "./gpu";
+import {
+  PrefixSum,
   blockCells,
   boidBlockSize,
+  boidInclude2d,
   getDispatchSize,
   searchBlockSize2d,
-  setupIncludes,
 } from "./shaders";
-import { createComputeShaders } from "./shaders/2d";
+import { createComputeShaders2d, createRasterMaterial } from "./shaders/2d";
 
-export const boids2d = async () => {
-  let numBoids = 32;
-  const clearBlockSize = 8;
-  const edgeMargin = 0.5;
-  const maxSpeed = 2;
-  const visualRange = 0.5;
-  const minDistance = 0.15;
-  const cohesionFactor = 2;
-  const alignmentFactor = 5;
-  const separationFactor = 1;
+const edgeMargin = 0.5;
+const maxSpeed = 2;
+const visualRange = 0.5;
+const minDistance = 0.15;
+const cohesionFactor = 2;
+const alignmentFactor = 5;
+const separationFactor = 1;
+const backgroundColour = [0.19215687, 0.3019608, 0.4745098] as const;
 
-  const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
-  const boidText = document.getElementById("boidText") as HTMLElement;
-  const boidSlider = document.getElementById("boidSlider") as HTMLInputElement;
-  const avoidToggle = document.getElementById(
-    "avoidToggle",
-  ) as HTMLInputElement;
-  avoidToggle.checked = false;
+export const createSim = async (
+  { device, renderer }: GPUContext,
+  canvas: HTMLCanvasElement,
+  initialBoids: number,
+) => {
+  // The raster's colours go to the screen as they are
+  renderer.outputColorSpace = LinearSRGBColorSpace;
 
-  const fpsText = document.getElementById("fpsText") as HTMLElement;
-  const engine = new WebGPUEngine(canvas, {
-    setMaximumLimits: true,
-    enableAllFeatures: true,
-  });
-  await engine.initAsync();
-  document.getElementById("loader")?.remove();
-
-  setupIncludes();
-  const maxBlocks = engine.currentLimits.maxComputeWorkgroupsPerDimension;
+  const maxBlocks = device.limits.maxComputeWorkgroupsPerDimension;
   // Same limit as Unity, unless the boid buffers would be too big to bind
   const maxBufferSize = Math.min(
-    engine.currentLimits.maxStorageBufferBindingSize,
-    engine.currentLimits.maxBufferSize,
+    device.limits.maxStorageBufferBindingSize,
+    device.limits.maxBufferSize,
   );
   const boidLimit = Math.min(1024 * maxBlocks, Math.floor(maxBufferSize / 16));
-  boidSlider.max = Math.ceil(Math.log2(boidLimit)).toString();
 
-  let scene: Scene;
-  let targetZoom: number;
-  let orthoSize: number;
-  let aspectRatio: number;
-  let camera: FreeCamera;
+  const params = new Params(device, {
+    numBoids: "u32",
+    xBound: "f32",
+    yBound: "f32",
+    maxSpeed: "f32",
+    minSpeed: "f32",
+    turnSpeed: "f32",
+    visualRangeSq: "f32",
+    minDistanceSq: "f32",
+    cohesionFactor: "f32",
+    alignmentFactor: "f32",
+    separationFactor: "f32",
+    dt: "f32",
+    gridDimX: "u32",
+    gridDimY: "u32",
+    gridInverseCellSize: "f32",
+    gridTotalCells: "u32",
+    boidStride: "u32",
+    updateGroupsX: "u32",
+    rngSeed: "u32",
+    blocks: "u32",
+    avoidMouse: "u32",
+    zoom: "f32",
+    mousePos: "vec2<f32>",
+    renderWidth: "u32",
+    renderHeight: "u32",
+    viewportHalfSize: "vec2<f32>",
+    cameraPos: "vec2<f32>",
+  });
 
-  const computeShaders = createComputeShaders(engine);
-  const {
-    clearRasterComputeShader,
-    generateBoidsComputeShader,
-    boidComputeShader,
-    sumBlocksComputeShader,
-    scanSumsComputeShader,
-    prefixSumComputeShader,
-    rearrangeBoidsComputeShader,
-  } = computeShaders;
+  const include = boidInclude2d(params.wgsl);
+  const [{ generateBoidsShader, rearrangeBoidsShader, boidsShader }, prefixSum] =
+    await Promise.all([
+      createComputeShaders2d(device, include),
+      PrefixSum.create(device, include),
+    ]);
 
-  // The grid carries over between frames, so every pass needs to be able to
-  // run before we start simulating
-  await Promise.all(
-    Object.values(computeShaders).map(
-      (shader) =>
-        new Promise<void>((resolve) => {
-          const check = () =>
-            shader.isReady() ? resolve() : setTimeout(check, 10);
-          check();
-        }),
-    ),
+  const abort = new AbortController();
+  const view = createCamera2D(canvas, abort.signal);
+
+  // Where the pointer is on the canvas, in CSS pixels
+  const pointer = { x: 0, y: 0 };
+  canvas.addEventListener(
+    "pointermove",
+    (event) => {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = event.clientX - rect.left;
+      pointer.y = event.clientY - rect.top;
+    },
+    { signal: abort.signal },
   );
 
-  let boidsComputeBuffer: StorageBuffer;
-  let boidsComputeBuffer2: StorageBuffer;
-  let gridBuffer: StorageBuffer;
-  let gridOffsetsBuffer: StorageBuffer;
-  let gridOffsetsBuffer2: StorageBuffer;
-  let gridSumsBuffer: StorageBuffer;
-  let gridTotalCells: number;
-  let blocks: number;
-  let boidGroupsX: number;
-  let boidGroupsY: number;
-  let updateGroupsX: number;
-  let updateGroupsY: number;
-  let rasterLayer: Layer;
-  let renderTexture: RawTexture | null = null;
-  let renderTextureWidth = 0;
-  let renderTextureHeight = 0;
+  let numBoids = initialBoids;
+  let pendingNumBoids = 0;
+  let blocks = 0;
+  let boidGroupsX = 0;
+  let boidGroupsY = 0;
+  let updateGroupsX = 0;
+  let updateGroupsY = 0;
 
-  const params = new UniformBuffer(engine, undefined, false, "params");
-  params.addUniform("numBoids", 1);
-  params.addUniform("xBound", 1);
-  params.addUniform("yBound", 1);
-  params.addUniform("maxSpeed", 1);
-  params.addUniform("minSpeed", 1);
-  params.addUniform("turnSpeed", 1);
-  params.addUniform("visualRangeSq", 1);
-  params.addUniform("minDistanceSq", 1);
-  params.addUniform("cohesionFactor", 1);
-  params.addUniform("alignmentFactor", 1);
-  params.addUniform("separationFactor", 1);
-  params.addUniform("dt", 1);
-  params.addUniform("gridDimX", 1);
-  params.addUniform("gridDimY", 1);
-  params.addUniform("gridInverseCellSize", 1);
-  params.addUniform("gridTotalCells", 1);
-  params.addUniform("boidStride", 1);
-  params.addUniform("updateGroupsX", 1);
-  params.addUniform("rngSeed", 1);
-  params.addUniform("blocks", 1);
-  params.addUniform("avoidMouse", 1);
-  params.addUniform("zoom", 1);
-  params.addFloat2("mousePos", 0, 0);
-  params.addUniform("renderWidth", 1);
-  params.addUniform("renderHeight", 1);
-  params.addFloat2("viewportHalfSize", 0, 0);
-  params.addFloat2("cameraPos", 0, 0);
+  // The boids kernel reads one boid buffer and writes the next frame's boids to
+  // the other, so there's a set of bind groups for each way round
+  let boidBuffers: GPUBuffer[] = [];
+  let simBuffers: GPUBuffer[] = [];
+  let rearrangeBindGroups: GPUBindGroup[] = [];
+  let boidsBindGroups: GPUBindGroup[] = [];
+  let current = 0;
+  let gridBuffer: GPUBuffer;
+  let sortedIndexBuffer: GPUBuffer;
+  let gridOffsetBuffer: GPUBuffer;
 
-  const syncRenderParams = () => {
-    aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
-    params.updateUInt("renderWidth", engine.getRenderWidth());
-    params.updateUInt("renderHeight", engine.getRenderHeight());
-    params.updateFloat2("viewportHalfSize", orthoSize * aspectRatio, orthoSize);
-    params.updateFloat2("cameraPos", camera.position.x, camera.position.y);
+  // Screen sized raster the boids are drawn into, shown by a fullscreen quad
+  let quad: QuadMesh | null = null;
+  let rasterBuffer: GPUBuffer | null = null;
+  let rasterMaterial: NodeMaterial | null = null;
+  let rasterWidth = 0;
+  let rasterHeight = 0;
+
+  const bindRearrange = () => {
+    rearrangeBindGroups = boidBuffers.map((boids) =>
+      rearrangeBoidsShader.createBindGroup({
+        params: params.buffer,
+        grid: gridBuffer,
+        gridOffsets: gridOffsetBuffer,
+        boids,
+        sortedIndices: sortedIndexBuffer,
+        raster: rasterBuffer!,
+      }),
+    );
   };
 
-  const ensureRenderTexture = () => {
-    const width = engine.getRenderWidth();
-    const height = engine.getRenderHeight();
-    if (
-      renderTexture &&
-      renderTextureWidth === width &&
-      renderTextureHeight === height
-    ) {
+  const ensureRaster = () => {
+    const width = Math.max(1, canvas.width);
+    const height = Math.max(1, canvas.height);
+    if (rasterBuffer && width === rasterWidth && height === rasterHeight) {
       return;
     }
 
-    const nextTexture = RawTexture.CreateRGBAStorageTexture(
-      null,
+    rasterBuffer?.destroy();
+    rasterMaterial?.dispose();
+    rasterBuffer = createStorageBuffer(device, width * height * 4);
+    rasterWidth = width;
+    rasterHeight = height;
+    rasterMaterial = createRasterMaterial(
+      shareWithRenderer(renderer, rasterBuffer, 1),
       width,
       height,
-      scene,
-      false,
-      false,
-      Texture.NEAREST_NEAREST,
+      backgroundColour,
     );
-    nextTexture.wrapU = Texture.CLAMP_ADDRESSMODE;
-    nextTexture.wrapV = Texture.CLAMP_ADDRESSMODE;
-
-    const previousTexture = renderTexture;
-    renderTexture = nextTexture;
-    renderTextureWidth = width;
-    renderTextureHeight = height;
-
-    rasterLayer.texture = renderTexture;
-    clearRasterComputeShader.setStorageTexture("renderTarget", renderTexture);
-    rearrangeBoidsComputeShader.setStorageTexture(
-      "renderTarget",
-      renderTexture,
-    );
-
-    previousTexture?.dispose();
+    if (quad) {
+      quad.material = rasterMaterial;
+    } else {
+      quad = new QuadMesh(rasterMaterial);
+    }
+    if (boidBuffers.length > 0) {
+      bindRearrange();
+    }
   };
 
   const setup = () => {
-    boidText.innerHTML = `Boids: ${numBoids}`;
-    scene = new Scene(engine);
-    scene.clearColor.fromHexString("#314D79");
-    camera = new FreeCamera("camera1", new Vector3(0, 0, -5), scene);
-    camera.mode = 1;
-    aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
-    orthoSize = Math.max(2, Math.sqrt(numBoids) / 10 + edgeMargin);
-    targetZoom = orthoSize;
-    camera.orthoBottom = -orthoSize;
-    camera.orthoTop = orthoSize;
-    camera.orthoLeft = -orthoSize * aspectRatio;
-    camera.orthoRight = orthoSize * aspectRatio;
+    // Zoom camera based on number of boids
+    view.resetView(Math.max(2, Math.sqrt(numBoids) / 10 + edgeMargin));
+    const aspect = rasterWidth / rasterHeight;
+    const xBound = view.orthoSize * aspect - edgeMargin;
+    const yBound = view.orthoSize - edgeMargin;
 
-    const xBound = orthoSize * aspectRatio - edgeMargin;
-    const yBound = orthoSize - edgeMargin;
-
+    // Spatial grid setup
     const gridDimX = Math.floor((xBound * 2) / visualRange) + 30;
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
-    gridTotalCells = gridDimX * gridDimY;
+    const gridTotalCells = gridDimX * gridDimY;
     blocks = Math.ceil(gridTotalCells / blockCells);
 
-    [boidGroupsX, boidGroupsY] = getDispatchSize(
-      numBoids,
-      boidBlockSize,
-      maxBlocks,
-    );
+    [boidGroupsX, boidGroupsY] = getDispatchSize(numBoids, boidBlockSize, maxBlocks);
     [updateGroupsX, updateGroupsY] = getDispatchSize(
       numBoids,
       searchBlockSize2d,
       maxBlocks,
     );
 
-    // Boids
-    boidsComputeBuffer = new StorageBuffer(engine, numBoids * 16);
-    boidsComputeBuffer2 = new StorageBuffer(engine, numBoids * 16);
-
-    rasterLayer = new Layer(
-      "rasterLayer",
-      null,
-      scene,
-      false,
-      new Color4(1, 1, 1, 1),
-    );
-    rasterLayer.texture = null;
-
-    params.updateUInt("numBoids", numBoids);
-    params.updateFloat("xBound", xBound);
-    params.updateFloat("yBound", yBound);
-    params.updateFloat("maxSpeed", maxSpeed);
-    params.updateFloat("minSpeed", maxSpeed * 0.75);
-    params.updateFloat("turnSpeed", maxSpeed * 3);
-    params.updateFloat("visualRangeSq", visualRange * visualRange);
-    params.updateFloat("minDistanceSq", minDistance * minDistance);
-    params.updateFloat("cohesionFactor", cohesionFactor);
-    params.updateFloat("alignmentFactor", alignmentFactor);
-    params.updateFloat("separationFactor", separationFactor);
-    params.updateUInt("gridDimX", gridDimX);
-    params.updateUInt("gridDimY", gridDimY);
-    params.updateFloat("gridInverseCellSize", 1 / visualRange);
-    params.updateUInt("gridTotalCells", gridTotalCells);
-    params.updateUInt("boidStride", boidGroupsX * boidBlockSize);
-    params.updateUInt("updateGroupsX", updateGroupsX);
-    params.updateUInt("rngSeed", Math.floor(Math.random() * 10000000));
-    params.updateUInt("blocks", blocks);
-    syncRenderParams();
-
+    params.set("numBoids", numBoids);
+    params.set("xBound", xBound);
+    params.set("yBound", yBound);
+    params.set("maxSpeed", maxSpeed);
+    params.set("minSpeed", maxSpeed * 0.75);
+    params.set("turnSpeed", maxSpeed * 3);
+    params.set("visualRangeSq", visualRange * visualRange);
+    params.set("minDistanceSq", minDistance * minDistance);
+    params.set("cohesionFactor", cohesionFactor);
+    params.set("alignmentFactor", alignmentFactor);
+    params.set("separationFactor", separationFactor);
+    params.set("gridDimX", gridDimX);
+    params.set("gridDimY", gridDimY);
+    params.set("gridInverseCellSize", 1 / visualRange);
+    params.set("gridTotalCells", gridTotalCells);
+    params.set("boidStride", boidGroupsX * boidBlockSize);
+    params.set("updateGroupsX", updateGroupsX);
+    params.set("rngSeed", Math.floor(Math.random() * 10000000));
+    params.set("blocks", blocks);
     params.update();
 
-    // Grid
-    gridBuffer = new StorageBuffer(engine, numBoids * 4);
-    gridOffsetsBuffer = new StorageBuffer(engine, gridTotalCells * 4);
-    gridOffsetsBuffer2 = new StorageBuffer(engine, gridTotalCells * 4);
-    gridSumsBuffer = new StorageBuffer(engine, blocks * 4);
+    boidBuffers = [
+      createStorageBuffer(device, numBoids * 16),
+      createStorageBuffer(device, numBoids * 16),
+    ];
+    gridBuffer = createStorageBuffer(device, numBoids * 4);
+    sortedIndexBuffer = createStorageBuffer(device, numBoids * 4);
+    // Cell counts, which the prefix sum turns into offsets
+    const gridOffsetBufferIn = createStorageBuffer(device, gridTotalCells * 4);
+    gridOffsetBuffer = createStorageBuffer(device, gridTotalCells * 4);
+    const gridSumsBuffer = createStorageBuffer(device, blocks * 4);
+    simBuffers = [
+      ...boidBuffers,
+      gridBuffer,
+      sortedIndexBuffer,
+      gridOffsetBufferIn,
+      gridOffsetBuffer,
+      gridSumsBuffer,
+    ];
 
-    clearRasterComputeShader.setUniformBuffer("params", params);
-
-    sumBlocksComputeShader.setUniformBuffer("params", params);
-    sumBlocksComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
-    sumBlocksComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
-
-    scanSumsComputeShader.setUniformBuffer("params", params);
-    scanSumsComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
-
-    prefixSumComputeShader.setUniformBuffer("params", params);
-    prefixSumComputeShader.setStorageBuffer(
-      "gridOffsetsOut",
-      gridOffsetsBuffer2,
+    prefixSum.setBuffers({
+      params: params.buffer,
+      gridOffsetsIn: gridOffsetBufferIn,
+      gridOffsets: gridOffsetBuffer,
+      gridSums: gridSumsBuffer,
+    });
+    bindRearrange();
+    boidsBindGroups = boidBuffers.map((boidsIn, i) =>
+      boidsShader.createBindGroup({
+        params: params.buffer,
+        boidsIn,
+        boidsOut: boidBuffers[1 - i],
+        sortedIndices: sortedIndexBuffer,
+        gridOffsets: gridOffsetBuffer,
+        gridOffsetsIn: gridOffsetBufferIn,
+        grid: gridBuffer,
+      }),
     );
-    prefixSumComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
-    prefixSumComputeShader.setStorageBuffer("gridSums", gridSumsBuffer);
-
-    rearrangeBoidsComputeShader.setUniformBuffer("params", params);
-    rearrangeBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "gridOffsets",
-      gridOffsetsBuffer2,
-    );
-    rearrangeBoidsComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer);
-    rearrangeBoidsComputeShader.setStorageBuffer(
-      "boidsOut",
-      boidsComputeBuffer2,
-    );
-
-    boidComputeShader.setUniformBuffer("params", params);
-    boidComputeShader.setStorageBuffer("boidsIn", boidsComputeBuffer2);
-    boidComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
-    boidComputeShader.setStorageBuffer("gridOffsets", gridOffsetsBuffer2);
-    boidComputeShader.setStorageBuffer("gridOffsetsIn", gridOffsetsBuffer);
-    boidComputeShader.setStorageBuffer("grid", gridBuffer);
-
-    ensureRenderTexture();
+    current = 0;
 
     // Generate boids on GPU, also bins them into the (zero initialised) grid
-    generateBoidsComputeShader.setUniformBuffer("params", params);
-    generateBoidsComputeShader.setStorageBuffer("boids", boidsComputeBuffer);
-    generateBoidsComputeShader.setStorageBuffer(
-      "gridOffsets",
-      gridOffsetsBuffer,
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    generateBoidsShader.dispatch(
+      pass,
+      generateBoidsShader.createBindGroup({
+        params: params.buffer,
+        boids: boidBuffers[0],
+        gridOffsets: gridOffsetBufferIn,
+        grid: gridBuffer,
+      }),
+      boidGroupsX,
+      boidGroupsY,
     );
-    generateBoidsComputeShader.setStorageBuffer("grid", gridBuffer);
-    generateBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
   };
 
-  const disposeAll = () => {
-    renderTexture?.dispose();
-    scene.dispose();
-    boidsComputeBuffer.dispose();
-    boidsComputeBuffer2.dispose();
-    gridBuffer.dispose();
-    gridOffsetsBuffer.dispose();
-    gridOffsetsBuffer2.dispose();
-    gridSumsBuffer.dispose();
-    renderTexture = null;
-    renderTextureWidth = 0;
-    renderTextureHeight = 0;
+  const disposeSimBuffers = () => {
+    for (const buffer of simBuffers) buffer.destroy();
+    simBuffers = [];
+    boidBuffers = [];
   };
 
+  ensureRaster();
   setup();
 
-  canvas.onwheel = (e) => {
-    const zoomDelta = e.deltaY * orthoSize * 0.001;
-    if (targetZoom + zoomDelta > 1) {
-      targetZoom += zoomDelta;
+  const frame = (deltaTime: number) => {
+    // Restart here rather than from the slider, so it happens at most once a frame
+    if (pendingNumBoids > 0) {
+      numBoids = pendingNumBoids;
+      pendingNumBoids = 0;
+      disposeSimBuffers();
+      setup();
     }
-  };
 
-  canvas.onpointermove = (e) => {
+    ensureRaster();
+    view.update(deltaTime);
+
+    const aspect = rasterWidth / rasterHeight;
     const rect = canvas.getBoundingClientRect();
     const mouseX =
-      ((e.clientX - rect.left) / rect.width - 0.5) *
-        orthoSize *
-        2 *
-        aspectRatio +
-      camera.position.x;
-    const mouseY =
-      -((e.clientY - rect.top) / rect.height - 0.5) * orthoSize * 2 +
-      camera.position.y;
-    params.updateFloat2("mousePos", mouseX, mouseY);
+      (pointer.x / rect.width - 0.5) * view.orthoSize * 2 * aspect + view.x;
+    const mouseY = -(pointer.y / rect.height - 0.5) * view.orthoSize * 2 + view.y;
+    params.set("dt", deltaTime);
+    params.set("zoom", view.orthoSize / 3);
+    params.set("mousePos", [mouseX, mouseY]);
+    params.set("renderWidth", rasterWidth);
+    params.set("renderHeight", rasterHeight);
+    params.set("viewportHalfSize", [view.orthoSize * aspect, view.orthoSize]);
+    params.set("cameraPos", [view.x, view.y]);
     params.update();
 
-    if (e.buttons) {
-      camera.position.x -= e.movementX * 0.002 * orthoSize;
-      camera.position.y += e.movementY * 0.002 * orthoSize;
-    }
-  };
-
-  boidSlider.oninput = () => {
-    numBoids = Math.round(Math.pow(2, boidSlider.valueAsNumber));
-    if (numBoids > boidLimit) {
-      numBoids = boidLimit;
-    }
-    disposeAll();
-    setup();
-  };
-
-  let debounce: number;
-  window.onresize = () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(function () {
-      engine.resize();
-      aspectRatio = engine.getRenderWidth() / engine.getRenderHeight();
-      camera.orthoBottom = -orthoSize;
-      camera.orthoTop = orthoSize;
-      camera.orthoLeft = -orthoSize * aspectRatio;
-      camera.orthoRight = orthoSize * aspectRatio;
-    }, 100);
-  };
-
-  avoidToggle.onclick = () => {
-    params.updateUInt("avoidMouse", avoidToggle.checked ? 1 : 0);
-    params.update();
-  };
-
-  const smoothZoom = () => {
-    if (Math.abs(orthoSize - targetZoom) > 0.01) {
-      const aspectRatio = engine.getAspectRatio(camera);
-      orthoSize = Scalar.Lerp(orthoSize, targetZoom, 0.1);
-      camera.orthoBottom = -orthoSize;
-      camera.orthoTop = orthoSize;
-      camera.orthoLeft = -orthoSize * aspectRatio;
-      camera.orthoRight = orthoSize * aspectRatio;
-    }
-  };
-
-  engine.runRenderLoop(() => {
-    const fps = engine.getFps();
-    fpsText.innerHTML = `FPS: ${fps.toFixed(2)}`;
-    smoothZoom();
-    ensureRenderTexture();
-
-    // Cap dt like Unity's maximum allowed timestep so a long frame (e.g. after
-    // switching tabs) can't throw boids outside the grid
-    params.updateFloat("dt", Math.min(engine.getDeltaTime() / 1000, 1 / 3));
-    params.updateFloat("zoom", orthoSize / 3);
-    syncRenderParams();
-    params.update();
-
+    const encoder = device.createCommandEncoder();
     // Cleared first, the rearrange pass draws the boids
-    clearRasterComputeShader.dispatch(
-      Math.ceil(renderTextureWidth / clearBlockSize),
-      Math.ceil(renderTextureHeight / clearBlockSize),
-      1,
+    encoder.clearBuffer(rasterBuffer!);
+    const pass = encoder.beginComputePass();
+    prefixSum.dispatch(pass, blocks);
+    // Sort boid indices by cell (and draw the boids)
+    rearrangeBoidsShader.dispatch(
+      pass,
+      rearrangeBindGroups[current],
+      boidGroupsX,
+      boidGroupsY,
     );
+    // Compute boid behaviours
+    boidsShader.dispatch(pass, boidsBindGroups[current], updateGroupsX, updateGroupsY);
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+    current = 1 - current;
 
-    // Generate offsets (prefix sum): sum each block of cells, scan the sums,
-    // then scan each block starting from its sum
-    sumBlocksComputeShader.dispatch(blocks, 1, 1);
-    scanSumsComputeShader.dispatch(1, 1, 1);
-    prefixSumComputeShader.dispatch(blocks, 1, 1);
+    quad!.render(renderer);
+  };
 
-    rearrangeBoidsComputeShader.dispatch(boidGroupsX, boidGroupsY, 1);
-    boidComputeShader.dispatch(updateGroupsX, updateGroupsY, 1);
-    scene.render();
-  });
-
-  return engine;
+  return {
+    boidLimit,
+    frame,
+    setNumBoids: (count: number) => {
+      pendingNumBoids = Math.min(count, boidLimit);
+    },
+    setAvoidMouse: (avoid: boolean) => {
+      params.set("avoidMouse", avoid ? 1 : 0);
+    },
+    dispose: () => {
+      abort.abort();
+      disposeSimBuffers();
+      rasterBuffer?.destroy();
+      rasterMaterial?.dispose();
+      params.dispose();
+    },
+  };
 };

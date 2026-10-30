@@ -1,108 +1,127 @@
-import "@babylonjs/core/Engines/WebGPU/Extensions/engine.computeShader";
-import { ComputeShader } from "@babylonjs/core/Compute/computeShader";
-import type { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
+import {
+  Color,
+  DoubleSide,
+  MeshStandardNodeMaterial,
+  type StorageBufferAttribute,
+} from "three/webgpu";
+import {
+  Fn,
+  instanceIndex,
+  mix,
+  normalWorldGeometry,
+  positionGeometry,
+  pow,
+  sRGBTransferEOTF,
+  smoothstep,
+  storage,
+  vec3,
+  wgslFn,
+} from "three/tsl";
+import { ComputeShader } from "../../gpu";
 import boids3d from "./compute/boids3d.wgsl?raw";
 import generateBoids3d from "./compute/generateBoids3d.wgsl?raw";
-import prefixSum3d from "./compute/prefixSum3d.wgsl?raw";
 import rearrangeBoids3d from "./compute/rearrangeBoids3d.wgsl?raw";
-import scanSums3d from "./compute/scanSums3d.wgsl?raw";
-import sumBlocks3d from "./compute/sumBlocks3d.wgsl?raw";
 
-export const createComputeShaders3d = (engine: WebGPUEngine) => {
-  const generateBoidsComputeShader = new ComputeShader(
-    "generateBoids",
-    engine,
-    { computeSource: generateBoids3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        grid: { group: 0, binding: 3 },
-      },
-    }
-  );
+// include is boidInclude3d, for Params and the shared helpers
+export const createComputeShaders3d = async (
+  device: GPUDevice,
+  include: string,
+) => {
+  const [generateBoidsShader, rearrangeBoidsShader, boidsShader] =
+    await Promise.all([
+      ComputeShader.create(
+        device,
+        "generateBoids3d",
+        `${generateBoids3d}\n${include}`,
+        ["params", "boids", "gridOffsets", "grid"],
+      ),
+      ComputeShader.create(
+        device,
+        "rearrangeBoids3d",
+        `${rearrangeBoids3d}\n${include}`,
+        ["params", "grid", "gridOffsets", "boids", "sortedIndices"],
+      ),
+      ComputeShader.create(device, "boids3d", `${boids3d}\n${include}`, [
+        "params",
+        "boidsIn",
+        "boidsOut",
+        "sortedIndices",
+        "gridOffsets",
+        "gridOffsetsIn",
+        "grid",
+      ]),
+    ]);
 
-  const boidComputeShader = new ComputeShader(
-    "boids",
-    engine,
-    { computeSource: boids3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        boids: { group: 0, binding: 1 },
-        boidsIn: { group: 0, binding: 2 },
-        gridOffsets: { group: 0, binding: 3 },
-        gridOffsetsIn: { group: 0, binding: 4 },
-        grid: { group: 0, binding: 5 },
-      },
-    }
-  );
-
-  const sumBlocksComputeShader = new ComputeShader(
-    "sumBlocks",
-    engine,
-    { computeSource: sumBlocks3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsetsIn: { group: 0, binding: 1 },
-        gridSums: { group: 0, binding: 2 },
-      },
-    }
-  );
-
-  const scanSumsComputeShader = new ComputeShader(
-    "scanSums",
-    engine,
-    { computeSource: scanSums3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridSums: { group: 0, binding: 1 },
-      },
-    }
-  );
-
-  const prefixSumComputeShader = new ComputeShader(
-    "prefixSum",
-    engine,
-    { computeSource: prefixSum3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        gridOffsetsIn: { group: 0, binding: 1 },
-        gridOffsetsOut: { group: 0, binding: 2 },
-        gridSums: { group: 0, binding: 3 },
-      },
-    }
-  );
-
-  const rearrangeBoidsComputeShader = new ComputeShader(
-    "rearrangeBoids",
-    engine,
-    { computeSource: rearrangeBoids3d },
-    {
-      bindingsMapping: {
-        params: { group: 0, binding: 0 },
-        grid: { group: 0, binding: 1 },
-        gridOffsets: { group: 0, binding: 2 },
-        boidsIn: { group: 0, binding: 3 },
-        boidsOut: { group: 0, binding: 4 },
-        templatePositions: { group: 0, binding: 5 },
-        templateNormals: { group: 0, binding: 6 },
-        renderPositions: { group: 0, binding: 7 },
-        renderNormals: { group: 0, binding: 8 },
-      },
-    }
-  );
-
-  return {
-    generateBoidsComputeShader,
-    boidComputeShader,
-    sumBlocksComputeShader,
-    scanSumsComputeShader,
-    prefixSumComputeShader,
-    rearrangeBoidsComputeShader,
-  };
+  return { generateBoidsShader, rearrangeBoidsShader, boidsShader };
 };
+
+// A vertex of a boid's triangle, turned to face along its velocity like
+// BoidsUnity's BoidsBuffer.hlsl. The simulation is left handed like Unity,
+// three.js is right handed, so z is flipped on the way out.
+const boidVertex = wgslFn(`
+fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, local: vec3<f32>) -> vec3<f32> {
+  const halfPi = 1.57079632679;
+  const boidScale = 0.1;
+  let pos = vec3<f32>(posXY, posZVelX.x);
+  let vel = vec3<f32>(posZVelX.y, velYZ);
+
+  var v = local * boidScale;
+
+  let pitch = atan2(vel.y, length(vel.xz)) - halfPi;
+  v = vec3<f32>(-v.y * sin(pitch) + v.x * cos(pitch), v.y * cos(pitch) + v.x * sin(pitch), v.z);
+  let yaw = atan2(vel.x, vel.z) - halfPi;
+  v = vec3<f32>(v.x * cos(yaw) + v.z * sin(yaw), v.y, v.z * cos(yaw) - v.x * sin(yaw));
+
+  let world = v + pos;
+  return vec3<f32>(world.xy, -world.z);
+}
+`);
+
+// Places each instance of the boid triangle from a boid buffer, so the boids are
+// drawn straight from the simulation. The shadow pass uses the same positions.
+export const createBoidMaterial = (
+  boids: StorageBufferAttribute,
+  numBoids: number,
+) => {
+  // Each boid is 3 vec2s, see PackedBoid3d
+  const packed = storage(boids, "vec2", numBoids * 3).toReadOnly();
+  const boid = instanceIndex.mul(3);
+
+  // Single triangles, so their (flat) normals face whichever side is visible
+  const material = new MeshStandardNodeMaterial({
+    color: new Color(1, 0.02, 0),
+    roughness: 0.5,
+    metalness: 0,
+    side: DoubleSide,
+    flatShading: true,
+  });
+  material.positionNode = boidVertex({
+    posXY: packed.element(boid),
+    posZVelX: packed.element(boid.add(1)),
+    velYZ: packed.element(boid.add(2)),
+    local: positionGeometry,
+  });
+  return material;
+};
+
+// sRGB colours, approximating Unity's default procedural sky
+const zenithSky = vec3(0.45, 0.55, 0.71);
+const horizonSky = vec3(0.65, 0.76, 0.88);
+const horizonGlow = vec3(0.84, 0.92, 0.94);
+const groundSky = vec3(0.44, 0.42, 0.4);
+
+export const skyNode = Fn(() => {
+  const dirY = normalWorldGeometry.y;
+
+  const skyBlend = smoothstep(0.0, 0.95, dirY.mul(0.5).add(0.5));
+  const groundBlend = smoothstep(-0.08, 0.02, dirY);
+  const skyMix = pow(skyBlend, 0.8);
+  const glow = smoothstep(-0.01, 0.05, dirY).mul(
+    smoothstep(0.08, 0.22, dirY).oneMinus(),
+  );
+
+  const sky = mix(horizonSky, zenithSky, skyMix);
+  const base = mix(groundSky, sky, groundBlend);
+  // The renderer works in linear, and converts back to sRGB for the screen
+  return sRGBTransferEOTF(mix(base, horizonGlow, glow.mul(0.7)));
+})();

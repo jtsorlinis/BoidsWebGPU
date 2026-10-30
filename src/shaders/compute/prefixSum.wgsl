@@ -1,6 +1,3 @@
-#include<boid3dInclude>
-#include<scanInclude>
-
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read_write> gridOffsetsIn : array<u32>;
 @binding(2) @group(0) var<storage, read_write> gridOffsetsOut : array<u32>;

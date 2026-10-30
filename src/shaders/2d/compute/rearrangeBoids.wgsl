@@ -1,11 +1,11 @@
-#include<boidInclude>
-
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read> grid : array<u32>;
 @binding(2) @group(0) var<storage, read> gridOffsets : array<u32>;
-@binding(3) @group(0) var<storage, read> boidsIn : array<Boid>;
-@binding(4) @group(0) var<storage, read_write> boidsOut : array<Boid>;
-@binding(5) @group(0) var renderTarget : texture_storage_2d<rgba8unorm, write>;
+@binding(3) @group(0) var<storage, read> boids : array<Boid>;
+@binding(4) @group(0) var<storage, read_write> sortedIndices : array<u32>;
+// One packed rgba8 colour per pixel, rows from the bottom of the screen up.
+// Cleared to 0 each frame, which the display draws as the background.
+@binding(5) @group(0) var<storage, read_write> raster : array<u32>;
 
 const boidScale : f32 = 0.1;
 const boidTriangle0 : vec2<f32> = vec2<f32>(-0.4, -0.5) * boidScale;
@@ -38,12 +38,12 @@ fn worldToScreen(worldPos: vec2<f32>) -> vec2<f32> {
   return worldPos * screenScale + screenOffset;
 }
 
-fn getBoidColour(boid: Boid) -> vec4<f32> {
+fn getBoidColour(boid: Boid) -> u32 {
   var d = 1.0;
   if (params.avoidMouse > 0u) {
     d = distance(boid.pos, params.mousePos) / params.zoom;
   }
-  return vec4<f32>(1.0, d, d, 1.0);
+  return pack4x8unorm(vec4<f32>(1.0, d, d, 1.0));
 }
 
 fn rasterizeBoid(boid: Boid) {
@@ -51,8 +51,9 @@ fn rasterizeBoid(boid: Boid) {
   let v1 = worldToScreen(rotateLocalVertex(boidTriangle1, boid.vel) + boid.pos);
   let v2 = worldToScreen(rotateLocalVertex(boidTriangle2, boid.vel) + boid.pos);
 
-  let minBounds = floor(min(v0, min(v1, v2)));
-  let maxBounds = ceil(max(v0, max(v1, v2)));
+  // Only the pixels whose centres could be inside the triangle
+  let minBounds = ceil(min(v0, min(v1, v2)) - 0.5);
+  let maxBounds = floor(max(v0, max(v1, v2)) - 0.5);
   if (
     maxBounds.x < 0.0 ||
     maxBounds.y < 0.0 ||
@@ -94,10 +95,11 @@ fn rasterizeBoid(boid: Boid) {
     var w0 = w0Row;
     var w1 = w1Row;
     var w2 = w2Row;
+    let row = u32(y) * params.renderWidth;
 
     for (var x = minX; x <= maxX; x += 1) {
       if (w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0) {
-        textureStore(renderTarget, vec2<i32>(x, y), colour);
+        raster[row + u32(x)] = colour;
       }
 
       w0 += w0StepX;
@@ -119,9 +121,10 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
     return;
   }
 
-  let boid = boidsIn[index];
-  let newIndex = gridOffsets[getGridID(boid.pos)] + grid[index];
-  boidsOut[newIndex] = boid;
+  // Only the index moves, the boids kernel reads the boid through it
+  let boid = boids[index];
+  let sortedIndex = gridOffsets[getGridID(boid.pos)] + grid[index];
+  sortedIndices[sortedIndex] = index;
 
   // Drawing here saves a separate pass over every boid
   rasterizeBoid(boid);
