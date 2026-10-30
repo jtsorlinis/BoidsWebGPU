@@ -12,9 +12,12 @@ import {
   positionGeometry,
   pow,
   sRGBTransferEOTF,
+  select,
   smoothstep,
   storage,
+  uniform,
   vec3,
+  vertexIndex,
   wgslFn,
 } from "three/tsl";
 import type { BoidKernels } from "..";
@@ -56,14 +59,21 @@ fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, local: ve
 }
 `);
 
-// Places each instance of the boid triangle from a boid buffer
+// Boid triangles per instance. Instancing a single triangle leaves most of each vertex
+// warp idle, which made the boid and shadow draws ~3x slower
+export const boidsPerInstance = 256;
+
+// Places each boid's triangle from a boid buffer
 export const createBoidMaterial = (
   boids: StorageBufferAttribute,
   numBoids: number,
 ) => {
   // Each boid is 3 vec2s, see PackedBoid3d
   const packed = storage(boids, "vec2", numBoids * 3).toReadOnly();
-  const boid = instanceIndex.mul(3);
+  // The last instance's spare triangles repeat the last boid
+  const index = instanceIndex.mul(boidsPerInstance).add(vertexIndex.div(3));
+  const lastBoid = uniform(numBoids - 1, "uint");
+  const boid = select(index.greaterThan(lastBoid), lastBoid, index).mul(3);
 
   // Single triangles, so their (flat) normals face whichever side is visible
   const material = new MeshStandardNodeMaterial({

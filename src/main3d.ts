@@ -26,7 +26,7 @@ import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import { createCamera3D } from "./cameras";
 import { createBoidCompute, edgeMargin, visualRange } from "./compute";
 import { type GPUContext, shareWithRenderer } from "./gpu";
-import { createBoidMaterial, kernels3d, skyNode } from "./shaders/3d";
+import { boidsPerInstance, createBoidMaterial, kernels3d, skyNode } from "./shaders/3d";
 
 const sunDirection = new Vector3(
   -0.3213937660622072,
@@ -98,16 +98,31 @@ export const createSim = async (
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // One triangle, instanced per boid
+  // A run of boid triangles, instanced to cover every boid
+  const triangle = [-0.4, -0.5, 0, 0, 0.5, 0, 0.4, -0.5, 0];
   const boidGeometry = new BufferGeometry();
   boidGeometry.setAttribute(
     "position",
-    new BufferAttribute(new Float32Array([-0.4, -0.5, 0, 0, 0.5, 0, 0.4, -0.5, 0]), 3),
+    new BufferAttribute(
+      Float32Array.from({ length: boidsPerInstance * 9 }, (_, i) => triangle[i % 9]),
+      3,
+    ),
   );
   const boidMesh = new Mesh(boidGeometry);
   boidMesh.frustumCulled = false;
   boidMesh.castShadow = true;
   boidMesh.receiveShadow = true;
+  // The shadow maps are only sampled for depth, so skip writing their colour target
+  boidMesh.onBeforeShadow = (
+    _renderer,
+    _object,
+    _camera,
+    _shadowCamera,
+    _geometry,
+    depthMaterial,
+  ) => {
+    depthMaterial.colorWrite = false;
+  };
   scene.add(boidMesh);
 
   let numBoids = initialBoids;
@@ -169,7 +184,7 @@ export const createSim = async (
       createBoidMaterial(shareWithRenderer(renderer, boids, 2), numBoids),
     );
     boidMesh.material = boidMaterials[compute.current];
-    boidMesh.count = numBoids;
+    boidMesh.count = Math.ceil(numBoids / boidsPerInstance);
   };
 
   setup();
