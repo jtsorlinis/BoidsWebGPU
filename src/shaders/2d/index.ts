@@ -14,7 +14,6 @@ import boids from "./compute/boids.wgsl?raw";
 import generateBoids from "./compute/generateBoids.wgsl?raw";
 import rearrangeBoids from "./compute/rearrangeBoids.wgsl?raw";
 
-// include is boidInclude2d, for Params and the shared helpers
 export const createComputeShaders2d = async (
   device: GPUDevice,
   include: string,

@@ -6,6 +6,7 @@ import {
   HemisphereLight,
   Mesh,
   MeshStandardNodeMaterial,
+  type Node,
   PCFShadowMap,
   PerspectiveCamera,
   PlaneGeometry,
@@ -13,6 +14,14 @@ import {
   Scene,
   Vector3,
 } from "three/webgpu";
+import {
+  cameraPosition,
+  mix,
+  positionWorld,
+  saturate,
+  uniform,
+  vec4,
+} from "three/tsl";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import { createCamera3D } from "./cameras";
 import {
@@ -43,8 +52,6 @@ const cohesionFactor = 2;
 const alignmentFactor = 5;
 const separationFactor = 1;
 
-// Unity's scene, in three.js's right handed space (z flipped). Unity's lighting has no
-// 1 / PI in its diffuse term, so its intensities are multiplied by PI here.
 const sunDirection = new Vector3(
   -0.3213937660622072,
   -0.7660444011712928,
@@ -52,7 +59,6 @@ const sunDirection = new Vector3(
 );
 const sunColour = new Color().setRGB(1, 0.95686275, 0.8392157, SRGBColorSpace);
 const sunIntensity = Math.PI;
-// Stands in for Unity's ambient light from the sky
 const ambientSky = new Color().setRGB(0.36, 0.45, 0.62, SRGBColorSpace);
 const ambientGround = new Color().setRGB(0.3, 0.28, 0.26, SRGBColorSpace);
 const ambientIntensity = Math.PI;
@@ -68,7 +74,6 @@ export const createSim = async (
   renderer.shadowMap.type = PCFShadowMap;
 
   const maxBlocks = device.limits.maxComputeWorkgroupsPerDimension;
-  // Same limit as Unity, unless the boid buffers would be too big to bind
   const maxBufferSize = Math.min(
     device.limits.maxStorageBufferBindingSize,
     device.limits.maxBufferSize,
@@ -107,7 +112,6 @@ export const createSim = async (
       PrefixSum.create(device, include),
     ]);
 
-  // Scene
   const scene = new Scene();
   scene.backgroundNode = skyNode;
 
@@ -122,17 +126,23 @@ export const createSim = async (
   sun.shadow.mapSize.set(mapSize, mapSize);
   sun.shadow.bias = -0.0001;
   sun.shadow.normalBias = 0.01;
-  // Soft edges, PCF samples this many texels out
   sun.shadow.radius = 2;
-  // Like Unity's 2 shadow cascades, the near one over the closest 10% of the shadow distance
   const csm = new CSMShadowNode(sun, {
     cascades: 2,
     mode: "custom",
     customSplitsCallback: (_cascades, _near, _far, breaks) => {
-      breaks.push(0.1, 1);
+      breaks.push(0.2, 1);
     },
   });
-  sun.shadow.shadowNode = csm;
+  const shadowFadeScale = uniform(0);
+  const shadowFadeBias = uniform(0);
+  const cameraToPixel = positionWorld.sub(cameraPosition);
+  const shadowFade = saturate(
+    cameraToPixel.dot(cameraToPixel).mul(shadowFadeScale).add(shadowFadeBias),
+  );
+  // CSMShadowNode is a vec4, its types just don't say so
+  const csmShadow = csm as unknown as Node<"vec4">;
+  sun.shadow.shadowNode = mix(csmShadow, vec4(1, 1, 1, 1), shadowFade);
   scene.add(sun, sun.target);
   scene.add(new HemisphereLight(ambientSky, ambientGround, ambientIntensity));
 
@@ -146,8 +156,7 @@ export const createSim = async (
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // A boid's triangle pointing up +y, instanced once per boid. The boid material
-  // places each one from the boid buffer.
+  // One triangle, instanced per boid
   const boidGeometry = new BufferGeometry();
   boidGeometry.setAttribute(
     "position",
@@ -177,7 +186,6 @@ export const createSim = async (
   let boidMaterials: MeshStandardNodeMaterial[] = [];
   let current = 0;
 
-  // Like Unity's shadow distance, the cascades cover the camera's view this far out
   const updateShadows = (spaceBounds: number) => {
     const shadowDistance = spaceBounds * 6.5;
     csm.maxFar = shadowDistance;
@@ -188,6 +196,11 @@ export const createSim = async (
       shadow!.camera.far = far;
       shadow!.camera.updateProjectionMatrix();
     }
+
+    const fadeNearSq = (0.95 * shadowDistance) ** 2;
+    shadowFadeScale.value = 1 / (shadowDistance ** 2 - fadeNearSq);
+    shadowFadeBias.value = -fadeNearSq * shadowFadeScale.value;
+
     // The cascades are made on the first render, after that they need updating
     if (csm.camera) {
       csm.updateFrustums();

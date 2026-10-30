@@ -1,10 +1,5 @@
 import type { PerspectiveCamera } from "three/webgpu";
 
-// Ports of BoidsUnity's MoveCamera2D/3D. Left or right button (or a touch) drags,
-// with the pointer locked while it does. The canvas only gets events that aren't
-// over the panel, so drags never start there.
-
-// Same 0.1 scale Unity's old Input Manager axes applied to mouse movement and the scroll wheel
 const pointerSensitivity = 0.1;
 const scrollSensitivity = 0.1;
 
@@ -72,8 +67,6 @@ const attachDrag = (
   return { isDragging: () => dragging };
 };
 
-// Orthographic view centred on (x, y), orthoSize world units from the centre to the
-// top edge. Drag to pan, scroll to zoom.
 export const createCamera2D = (canvas: HTMLCanvasElement, signal: AbortSignal) => {
   const maxZoom = 2;
   const smoothing = 10;
@@ -110,7 +103,6 @@ export const createCamera2D = (canvas: HTMLCanvasElement, signal: AbortSignal) =
   canvas.addEventListener(
     "wheel",
     (event) => {
-      // Wheel notches, which Unity reports as 1 each
       const notches =
         event.deltaMode === WheelEvent.DOM_DELTA_LINE
           ? event.deltaY / 3
@@ -123,22 +115,19 @@ export const createCamera2D = (canvas: HTMLCanvasElement, signal: AbortSignal) =
   return view;
 };
 
-// Matches the old Input Manager: keys that ramp in and out over a third of a second
+// Keys ramp in and out over a third of a second
 const keyRamp = 3;
 const moveSpeed = 10;
 const fastMultiplier = 3;
 const pitchLimit = 88;
 const lookSensitivity = 1.5;
 
-// Drag to look around, and WASD (or the arrows) + Q/E to fly while dragging.
-// Shift flies faster.
 export const createCamera3D = (
   camera: PerspectiveCamera,
   canvas: HTMLCanvasElement,
   signal: AbortSignal,
 ) => {
   camera.rotation.order = "YXZ"; // Yaw, then pitch, with no roll
-  // Degrees, like Unity's: x turns right, y looks up
   const rotation = { x: 0, y: 0 };
   const keyAxes = { x: 0, y: 0, z: 0 };
   const heldKeys = new Set<string>();

@@ -19,7 +19,6 @@ const ui = createUI();
 let sim: Sim | null = null;
 let starting = 0;
 
-// Each view starts over from the initial count, like loading its Unity scene
 const startSim = async (is3D: boolean) => {
   const start = ++starting;
   sim?.dispose();
@@ -61,7 +60,5 @@ renderer.setAnimationLoop((time) => {
   ui.frame(deltaTime);
 
   resize();
-  // Cap dt like Unity's maximum allowed timestep so a long frame (e.g. after
-  // switching tabs) can't throw boids outside the grid
   sim?.frame(Math.min(deltaTime, 1 / 3));
 });

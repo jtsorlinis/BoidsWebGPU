@@ -27,8 +27,6 @@ body {
   touch-action: none;
 }
 
-/* The settings card, ported from BoidsUnity's BoidsUI.uss */
-
 .card {
   --text: rgb(237, 237, 240);
   --text-muted: rgb(158, 158, 166);

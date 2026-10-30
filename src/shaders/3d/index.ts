@@ -22,7 +22,6 @@ import boids3d from "./compute/boids3d.wgsl?raw";
 import generateBoids3d from "./compute/generateBoids3d.wgsl?raw";
 import rearrangeBoids3d from "./compute/rearrangeBoids3d.wgsl?raw";
 
-// include is boidInclude3d, for Params and the shared helpers
 export const createComputeShaders3d = async (
   device: GPUDevice,
   include: string,
@@ -55,9 +54,6 @@ export const createComputeShaders3d = async (
   return { generateBoidsShader, rearrangeBoidsShader, boidsShader };
 };
 
-// A vertex of a boid's triangle, turned to face along its velocity like
-// BoidsUnity's BoidsBuffer.hlsl. The simulation is left handed like Unity,
-// three.js is right handed, so z is flipped on the way out.
 const boidVertex = wgslFn(`
 fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, local: vec3<f32>) -> vec3<f32> {
   const halfPi = 1.57079632679;
@@ -77,8 +73,7 @@ fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, local: ve
 }
 `);
 
-// Places each instance of the boid triangle from a boid buffer, so the boids are
-// drawn straight from the simulation. The shadow pass uses the same positions.
+// Places each instance of the boid triangle from a boid buffer
 export const createBoidMaterial = (
   boids: StorageBufferAttribute,
   numBoids: number,
@@ -104,7 +99,6 @@ export const createBoidMaterial = (
   return material;
 };
 
-// sRGB colours, approximating Unity's default procedural sky
 const zenithSky = vec3(0.45, 0.55, 0.71);
 const horizonSky = vec3(0.65, 0.76, 0.88);
 const horizonGlow = vec3(0.84, 0.92, 0.94);

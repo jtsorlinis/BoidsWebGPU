@@ -27,7 +27,7 @@ export const getDispatchSize = (
   return [Math.ceil(groups / groupsY), groupsY] as const;
 };
 
-// Shared by every 2D kernel, params is the Params struct's WGSL
+// Shared by every 2D kernel
 export const boidInclude2d = (params: string) => `
 const boidBlockSize: u32 = ${boidBlockSize};
 const blockSize: u32 = ${blockSize};
@@ -54,7 +54,7 @@ fn getBoidIndex(id: vec3<u32>) -> u32 {
 }
 `;
 
-// Shared by every 3D kernel, params is the Params struct's WGSL
+// Shared by every 3D kernel
 export const boidInclude3d = (params: string) => `
 const boidBlockSize: u32 = ${boidBlockSize};
 const blockSize: u32 = ${blockSize};
@@ -120,7 +120,6 @@ export class PrefixSum {
     this.shaders = shaders;
   }
 
-  // include is the mode's boid include, for Params and the block sizes
   static async create(device: GPUDevice, include: string) {
     const shared = `${scanInclude}\n${include}`;
     const shaders = await Promise.all([

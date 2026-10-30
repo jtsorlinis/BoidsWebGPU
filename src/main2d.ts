@@ -34,7 +34,6 @@ export const createSim = async (
   renderer.outputColorSpace = LinearSRGBColorSpace;
 
   const maxBlocks = device.limits.maxComputeWorkgroupsPerDimension;
-  // Same limit as Unity, unless the boid buffers would be too big to bind
   const maxBufferSize = Math.min(
     device.limits.maxStorageBufferBindingSize,
     device.limits.maxBufferSize,

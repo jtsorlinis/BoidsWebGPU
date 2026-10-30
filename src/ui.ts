@@ -1,4 +1,3 @@
-// Settings panel shared by the 2D and 3D views, a port of BoidsUnity's BoidsUI
 const minExponent = 5;
 const fpsInterval = 0.25;
 
@@ -94,7 +93,6 @@ export const createUI = () => {
   return {
     on: handlers,
 
-    // Starts a view at the given count, with avoid mouse off
     setView: (view3D: boolean, count: number) => {
       is3D = view3D;
       numBoids = count;
