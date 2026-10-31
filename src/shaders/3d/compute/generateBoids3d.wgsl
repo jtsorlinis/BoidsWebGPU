@@ -1,7 +1,7 @@
 @binding(0) @group(0) var<uniform> params : Params;
 @binding(1) @group(0) var<storage, read_write> boids : array<PackedBoid3d>;
 @binding(2) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
-@binding(3) @group(0) var<storage, read_write> grid : array<u32>;
+@binding(3) @group(0) var<storage, read_write> grid : array<vec2<u32>>;
 
 @compute @workgroup_size(boidBlockSize)
 fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
@@ -27,5 +27,6 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
   boids[index] = packBoid(boid);
 
   // Bin into the first frame's grid, after that the boids kernel keeps it up to date
-  grid[index] = atomicAdd(&gridOffsetsIn[getGridID(boid.pos)], 1u);
+  let cell = getGridID(boid.pos);
+  grid[index] = vec2<u32>(cell, atomicAdd(&gridOffsetsIn[cell], 1u));
 }

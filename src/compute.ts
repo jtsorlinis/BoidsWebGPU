@@ -11,6 +11,7 @@ import {
   boidBlockSize,
   boidInclude,
   getDispatchSize,
+  rearrangeBoids,
 } from "./shaders";
 
 export const edgeMargin = 0.5;
@@ -86,8 +87,8 @@ export const createBoidCompute = async <Name extends string>(
       ComputeShader.create(
         device,
         `rearrangeBoids${label}`,
-        `${kernels.rearrangeBoids}\n${include}`,
-        kernels.rearrangeBindings,
+        `${rearrangeBoids}\n${include}`,
+        ["params", "grid", "gridOffsets", "sortedIndices"],
       ),
       ComputeShader.create(device, `boids${label}`, `${kernels.boids}\n${include}`, [
         "params",
@@ -97,6 +98,7 @@ export const createBoidCompute = async <Name extends string>(
         "gridOffsets",
         "gridOffsetsIn",
         "grid",
+        ...kernels.viewBindings,
       ]),
       PrefixSum.create(device, include),
     ]);
@@ -106,11 +108,11 @@ export const createBoidCompute = async <Name extends string>(
   let updateGroups: readonly [number, number] = [0, 0];
 
   // The boids kernel reads one boid buffer and writes the next frame's boids to
-  // the other, so there's a set of bind groups for each way round
+  // the other, so there's a bind group for each way round
   let boidBuffers: GPUBuffer[] = [];
   let gridBuffers: Record<string, GPUBuffer> = {};
   let viewBuffers: Record<string, GPUBuffer> = {};
-  let rearrangeBindGroups: GPUBindGroup[] = [];
+  let rearrangeBindGroup: GPUBindGroup | null = null;
   let boidsBindGroups: GPUBindGroup[] = [];
   let current = 0;
 
@@ -121,9 +123,13 @@ export const createBoidCompute = async <Name extends string>(
     ...viewBuffers,
   });
 
-  const bindRearrange = () => {
-    rearrangeBindGroups = boidBuffers.map((boids) =>
-      rearrangeBoidsShader.createBindGroup({ ...sharedBuffers(), boids }),
+  const bindBoids = () => {
+    boidsBindGroups = boidBuffers.map((boidsIn, i) =>
+      boidsShader.createBindGroup({
+        ...sharedBuffers(),
+        boidsIn,
+        boidsOut: boidBuffers[1 - i],
+      }),
     );
   };
 
@@ -143,10 +149,10 @@ export const createBoidCompute = async <Name extends string>(
       return current;
     },
 
-    // Buffers the view's rearrange kernel binds as well (2D's raster)
+    // Buffers the view's boids kernel binds as well (2D's raster)
     setViewBuffers: (buffers: Record<string, GPUBuffer>) => {
       viewBuffers = buffers;
-      bindRearrange();
+      bindBoids();
     },
 
     // Restarts with newly generated boids, in the bounds and grid the view gives
@@ -180,7 +186,8 @@ export const createBoidCompute = async <Name extends string>(
         createStorageBuffer(device, numBoids * kernels.boidBytes),
       ];
       gridBuffers = {
-        grid: createStorageBuffer(device, numBoids * 4),
+        // Each boid's cell and its rank in that cell
+        grid: createStorageBuffer(device, numBoids * 8),
         sortedIndices: createStorageBuffer(device, numBoids * 4),
         // Cell counts, which the prefix sum turns into offsets
         gridOffsetsIn: createStorageBuffer(device, gridTotalCells * 4),
@@ -188,14 +195,8 @@ export const createBoidCompute = async <Name extends string>(
         gridSums: createStorageBuffer(device, blocks * 4),
       };
       prefixSum.setBuffers(sharedBuffers());
-      bindRearrange();
-      boidsBindGroups = boidBuffers.map((boidsIn, i) =>
-        boidsShader.createBindGroup({
-          ...sharedBuffers(),
-          boidsIn,
-          boidsOut: boidBuffers[1 - i],
-        }),
-      );
+      rearrangeBindGroup = rearrangeBoidsShader.createBindGroup(sharedBuffers());
+      bindBoids();
       current = 0;
 
       // Generate boids on GPU, also bins them into the (zero initialised) grid
@@ -220,9 +221,9 @@ export const createBoidCompute = async <Name extends string>(
 
       const pass = encoder.beginComputePass();
       prefixSum.dispatch(pass, blocks);
-      // Sort boid indices by cell (2D also draws the boids here)
-      rearrangeBoidsShader.dispatch(pass, rearrangeBindGroups[current], ...boidGroups);
-      // Compute boid behaviours
+      // Sort boid indices by cell
+      rearrangeBoidsShader.dispatch(pass, rearrangeBindGroup!, ...boidGroups);
+      // Compute boid behaviours (2D also draws the boids here)
       boidsShader.dispatch(pass, boidsBindGroups[current], ...updateGroups);
       pass.end();
       current = 1 - current;

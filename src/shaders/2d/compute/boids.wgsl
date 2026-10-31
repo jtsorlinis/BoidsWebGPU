@@ -4,7 +4,10 @@
 @binding(3) @group(0) var<storage, read> sortedIndices : array<u32>;
 @binding(4) @group(0) var<storage, read> gridOffsets : array<u32>;
 @binding(5) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
-@binding(6) @group(0) var<storage, read_write> grid : array<u32>;
+@binding(6) @group(0) var<storage, read_write> grid : array<vec2<u32>>;
+// One packed rgba8 colour per pixel, rows from the bottom of the screen up.
+// Cleared to 0 each frame, which the display draws as the background.
+@binding(7) @group(0) var<storage, read_write> raster : array<u32>;
 
 // Neighbour rows staged once per group, as (pos, vel)
 var<workgroup> tile : array<vec4<f32>, tileSize>;
@@ -45,9 +48,12 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
 
     workgroupBarrier();
     if (tiled) {
-      for (var k = localID; k < tileCount; k += searchBlockSize) {
-        let other = boidsIn[sortedIndices[tileStart + k]];
-        tile[k] = vec4<f32>(other.pos, other.vel);
+      for (var s = 0u; s < stagePasses; s += 1u) {
+        let k = localID + s * searchBlockSize;
+        if (k < tileCount) {
+          let other = boidsIn[sortedIndices[tileStart + k]];
+          tile[k] = vec4<f32>(other.pos, other.vel);
+        }
       }
     }
     workgroupBarrier();
@@ -153,6 +159,10 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
     boidsOut[index] = boid;
 
     // Bin the boid into next frame's grid, saving a separate update grid pass
-    grid[index] = atomicAdd(&gridOffsetsIn[getGridID(boid.pos)], 1u);
+    let cell = getGridID(boid.pos);
+    grid[index] = vec2<u32>(cell, atomicAdd(&gridOffsetsIn[cell], 1u));
+
+    // Drawing here saves a separate pass over every boid
+    rasterizeBoid(boid);
   }
 }

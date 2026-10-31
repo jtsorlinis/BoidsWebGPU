@@ -20,15 +20,13 @@ import type { BoidKernels } from "..";
 import include from "./boid3d.wgsl?raw";
 import boids3d from "./compute/boids3d.wgsl?raw";
 import generateBoids3d from "./compute/generateBoids3d.wgsl?raw";
-import rearrangeBoids3d from "./compute/rearrangeBoids3d.wgsl?raw";
 
 export const kernels3d: BoidKernels = {
   label: "3d",
   include,
   generateBoids: generateBoids3d,
-  rearrangeBoids: rearrangeBoids3d,
   boids: boids3d,
-  rearrangeBindings: ["params", "grid", "gridOffsets", "boids", "sortedIndices"],
+  viewBindings: [],
   // A PackedBoid3d
   boidBytes: 24,
   searchBlockSize: 64,

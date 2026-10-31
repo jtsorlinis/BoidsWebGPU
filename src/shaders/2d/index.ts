@@ -13,29 +13,21 @@ import type { BoidKernels } from "..";
 import include from "./boid.wgsl?raw";
 import boids from "./compute/boids.wgsl?raw";
 import generateBoids from "./compute/generateBoids.wgsl?raw";
-import rearrangeBoids from "./compute/rearrangeBoids.wgsl?raw";
+import raster from "./raster.wgsl?raw";
 
 export const kernels2d: BoidKernels = {
   label: "2d",
   include,
   generateBoids,
-  rearrangeBoids,
-  boids,
-  rearrangeBindings: [
-    "params",
-    "grid",
-    "gridOffsets",
-    "boids",
-    "sortedIndices",
-    "raster",
-  ],
+  boids: `${boids}\n${raster}`,
+  viewBindings: ["raster"],
   boidBytes: 16,
   searchBlockSize: 128,
   tileSize: 256,
   boidLimitPerGroup: 1024,
 };
 
-// Shows the raster rearrangeBoids draws into, one pixel per screen pixel. Pixels
+// Shows the raster the boids kernel draws into, one pixel per screen pixel. Pixels
 // no boid covered are still 0, and show the background.
 export const createRasterMaterial = (
   raster: StorageBufferAttribute,

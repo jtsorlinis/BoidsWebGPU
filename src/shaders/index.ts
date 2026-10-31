@@ -4,6 +4,9 @@ import sumBlocks from "./compute/sumBlocks.wgsl?raw";
 import scanSums from "./compute/scanSums.wgsl?raw";
 import prefixSum from "./compute/prefixSum.wgsl?raw";
 
+// Sorts boid indices by cell, the same kernel for 2D and 3D
+export { default as rearrangeBoids } from "./compute/rearrangeBoids.wgsl?raw";
+
 // Per-boid kernels
 export const boidBlockSize = 256;
 // Prefix sum kernels, each group covers 4 rows of blockSize cells
@@ -16,10 +19,9 @@ export type BoidKernels = {
   // The view's Boid struct and getGridID, shared by its kernels
   include: string;
   generateBoids: string;
-  rearrangeBoids: string;
   boids: string;
-  // The one kernel whose bindings differ, 2D's also draws into a raster
-  rearrangeBindings: readonly string[];
+  // Bindings the boids kernel takes after the shared ones, 2D's also draws into a raster
+  viewBindings: readonly string[];
   boidBytes: number;
   // Neighbour search kernels, each group stages its neighbour rows into a shared tile
   searchBlockSize: number;
@@ -47,6 +49,8 @@ const blockSize: u32 = ${blockSize};
 const blockCells: u32 = ${blockCells};
 const searchBlockSize: u32 = ${kernels.searchBlockSize};
 const tileSize: u32 = ${kernels.tileSize};
+// Passes for a group to stage a full tile, one boid per thread each pass
+const stagePasses: u32 = (tileSize + searchBlockSize - 1u) / searchBlockSize;
 
 ${params}
 

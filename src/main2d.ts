@@ -120,7 +120,7 @@ export const createSim = async (
     params.set("cameraPos", [view.x, view.y]);
 
     const encoder = device.createCommandEncoder();
-    // Cleared first, the rearrange pass draws the boids
+    // Cleared first, the boids kernel draws the boids
     encoder.clearBuffer(rasterBuffer!);
     compute.encode(encoder, deltaTime);
     device.queue.submit([encoder.finish()]);

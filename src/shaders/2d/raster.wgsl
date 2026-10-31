@@ -1,11 +1,4 @@
-@binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read> grid : array<u32>;
-@binding(2) @group(0) var<storage, read> gridOffsets : array<u32>;
-@binding(3) @group(0) var<storage, read> boids : array<Boid>;
-@binding(4) @group(0) var<storage, read_write> sortedIndices : array<u32>;
-// One packed rgba8 colour per pixel, rows from the bottom of the screen up.
-// Cleared to 0 each frame, which the display draws as the background.
-@binding(5) @group(0) var<storage, read_write> raster : array<u32>;
+// Draws boids into the raster, for the 2D boids kernel
 
 const boidScale : f32 = 0.1;
 const boidTriangle0 : vec2<f32> = vec2<f32>(-0.4, -0.5) * boidScale;
@@ -102,21 +95,4 @@ fn rasterizeBoid(boid: Boid) {
     w1Row += w1StepY;
     w2Row += w2StepY;
   }
-}
-
-@compute @workgroup_size(boidBlockSize)
-fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  let index = getBoidIndex(GlobalInvocationID);
-
-  if (index >= params.numBoids) {
-    return;
-  }
-
-  // Only the index moves, the boids kernel reads the boid through it
-  let boid = boids[index];
-  let sortedIndex = gridOffsets[getGridID(boid.pos)] + grid[index];
-  sortedIndices[sortedIndex] = index;
-
-  // Drawing here saves a separate pass over every boid
-  rasterizeBoid(boid);
 }

@@ -4,7 +4,7 @@
 @binding(3) @group(0) var<storage, read> sortedIndices : array<u32>;
 @binding(4) @group(0) var<storage, read> gridOffsets : array<u32>;
 @binding(5) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
-@binding(6) @group(0) var<storage, read_write> grid : array<u32>;
+@binding(6) @group(0) var<storage, read_write> grid : array<vec2<u32>>;
 
 // Neighbour rows staged once per group, as (pos, vel.x) and vel.yz
 var<workgroup> tilePosVelX : array<vec4<f32>, tileSize>;
@@ -48,10 +48,13 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>, localID: u32, firstCell: u32, l
 
       workgroupBarrier();
       if (tiled) {
-        for (var k = localID; k < tileCount; k += searchBlockSize) {
-          let other = boidsIn[sortedIndices[tileStart + k]];
-          tilePosVelX[k] = vec4<f32>(other.posXY, other.posZVelX);
-          tileVelYZ[k] = other.velYZ;
+        for (var s = 0u; s < stagePasses; s += 1u) {
+          let k = localID + s * searchBlockSize;
+          if (k < tileCount) {
+            let other = boidsIn[sortedIndices[tileStart + k]];
+            tilePosVelX[k] = vec4<f32>(other.posXY, other.posZVelX);
+            tileVelYZ[k] = other.velYZ;
+          }
         }
       }
       workgroupBarrier();
@@ -151,6 +154,7 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
     boidsOut[index] = packBoid(boid);
 
     // Bin the boid into next frame's grid, saving a separate update grid pass
-    grid[index] = atomicAdd(&gridOffsetsIn[getGridID(boid.pos)], 1u);
+    let cell = getGridID(boid.pos);
+    grid[index] = vec2<u32>(cell, atomicAdd(&gridOffsetsIn[cell], 1u));
   }
 }
