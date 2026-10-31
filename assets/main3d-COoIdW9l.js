@@ -5,23 +5,26 @@ struct Boid3d {\r
   vel : vec3<f32>,\r
 };\r
 \r
-// vec3s are 16 byte aligned in storage, so boids are stored as 3 vec2s\r
+// vec3s are 16 byte aligned in storage, so boids are stored as 6 floats\r
 // (24 bytes instead of 32) and unpacked into Boid3d\r
 struct PackedBoid3d {\r
-  posXY : vec2<f32>,\r
-  posZVelX : vec2<f32>,\r
-  velYZ : vec2<f32>,\r
+  posX : f32,\r
+  posY : f32,\r
+  posZ : f32,\r
+  velX : f32,\r
+  velY : f32,\r
+  velZ : f32,\r
 };\r
 \r
 fn unpackBoid(boid: PackedBoid3d) -> Boid3d {\r
   return Boid3d(\r
-    vec3<f32>(boid.posXY, boid.posZVelX.x),\r
-    vec3<f32>(boid.posZVelX.y, boid.velYZ),\r
+    vec3<f32>(boid.posX, boid.posY, boid.posZ),\r
+    vec3<f32>(boid.velX, boid.velY, boid.velZ),\r
   );\r
 }\r
 \r
 fn packBoid(boid: Boid3d) -> PackedBoid3d {\r
-  return PackedBoid3d(boid.pos.xy, vec2<f32>(boid.pos.z, boid.vel.x), boid.vel.yz);\r
+  return PackedBoid3d(boid.pos.x, boid.pos.y, boid.pos.z, boid.vel.x, boid.vel.y, boid.vel.z);\r
 }\r
 \r
 // Shared so every kernel that bins a boid gets the exact same cell\r
@@ -116,9 +119,9 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>, localID: u32, firstCell: u32, l
         for (var s = 0u; s < stagePasses; s += 1u) {\r
           let k = localID + s * searchBlockSize;\r
           if (k < tileCount) {\r
-            let other = boidsIn[sortedIndices[tileStart + k]];\r
-            tilePosVelX[k] = vec4<f32>(other.posXY, other.posZVelX);\r
-            tileVelYZ[k] = other.velYZ;\r
+            let other = unpackBoid(boidsIn[sortedIndices[tileStart + k]]);\r
+            tilePosVelX[k] = vec4<f32>(other.pos, other.vel.x);\r
+            tileVelYZ[k] = other.vel.yz;\r
           }\r
         }\r
       }\r
@@ -224,11 +227,9 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   }\r
 }\r
 `,viewBindings:[],boidBytes:24,searchBlockSize:64,tileSize:160,boidLimitPerGroup:256},le=A(`
-fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, corner: u32) -> vec3<f32> {
+fn boidVertex(pos: vec3<f32>, vel: vec3<f32>, corner: u32) -> vec3<f32> {
   const halfPi = 1.57079632679;
   const boidScale = 0.1;
-  let pos = vec3<f32>(posXY, posZVelX.x);
-  let vel = vec3<f32>(posZVelX.y, velYZ);
 
   // The triangle's corners: (-0.4, -0.5), (0, 0.5), (0.4, -0.5)
   let local = vec3<f32>((f32(corner) - 1.0) * 0.4, select(-0.5, 0.5, corner == 1u), 0.0);
@@ -242,4 +243,4 @@ fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, corner: u
   let world = v + pos;
   return vec3<f32>(world.xy, -world.z);
 }
-`),ue=(e,t)=>{let n=V(e,`vec2`,t*3).toReadOnly(),r=v.div(3).mul(3),i=new p({color:new m(1,.02,0),roughness:.5,metalness:0,side:2,flatShading:!0});return i.positionNode=le({posXY:n.element(r),posZVelX:n.element(r.add(1)),velYZ:n.element(r.add(2)),corner:v.mod(3)}),i},de=S(.45,.55,.71),$=S(.65,.76,.88),fe=S(.84,.92,.94),pe=S(.44,.42,.4),me=I(()=>{let e=F.y,t=R(0,.95,e.mul(.5).add(.5)),n=R(-.08,.02,e),r=L(t,.8),i=R(-.01,.05,e).mul(R(.08,.22,e).oneMinus()),a=N($,de,r),o=N(pe,a,n);return P(N(o,fe,i.mul(.7)))})(),he=new n(-.3213937660622072,-.7660444011712928,-.5566704252156701),ge=new m().setRGB(1,.95686275,.8392157,e),_e=Math.PI,ve=new m().setRGB(.36,.45,.62,e),ye=new m().setRGB(.3,.28,.26,e),be=Math.PI,xe=8192,Se=async({device:t,renderer:n},i,a)=>{n.outputColorSpace=e,n.shadowMap.enabled=!0,n.shadowMap.type=1;let s=await te(t,ce,{zBound:`f32`,gridDimZ:`u32`}),c=new ee;c.backgroundNode=me;let d=new g(60,i.width/i.height,.3,1e3),m=new AbortController,h=ne(d,i,m.signal),v=new f(ge,_e);v.position.copy(he).negate(),v.castShadow=!0;let x=Math.min(xe,t.limits.maxTextureDimension2D);v.shadow.mapSize.set(x,x),v.shadow.bias=-1e-4,v.shadow.normalBias=.01,v.shadow.radius=2;let S=new se(v,{cascades:2,mode:`custom`,customSplitsCallback:(e,t,n,r)=>{r.push(.2,1)}}),C=B(0),w=B(0),T=j.sub(ie),E=re(T.dot(T).mul(C).add(w)),D=S;v.shadow.shadowNode=N(D,y(1,1,1,1),E),c.add(v,v.target),c.add(new u(ve,ye,be));let O=new r(1,1).rotateX(-Math.PI/2),A=new p({color:16777215,roughness:.5,metalness:0}),M=new _(O,A);M.receiveShadow=!0,c.add(M);let P=new l,F=new _(P);F.frustumCulled=!1,F.castShadow=!0,F.receiveShadow=!0,F.onBeforeShadow=(e,t,n,r,i,a)=>{a.colorWrite=!1},c.add(F);let I=a,L=0,R=0,z=0,V=[],H=e=>{let t=e*6.5;S.maxFar=t,S.lightMargin=e*4;let n=S.lightMargin+t*2;for(let{shadow:e}of[v,...S.lights])e.camera.far=n,e.camera.updateProjectionMatrix();let r=(.95*t)**2;C.value=1/(t**2-r),w.value=-r*C.value,S.camera&&S.updateFrustums()},U=()=>{let e=Math.max(1,I**(1/3)/7.5+k);h.resetView(e*3.8),M.scale.set(e*4,1,e*4),M.position.y=-e-1,H(e);let t=2*e-k,r=e-k,i=2*e-k,a=Math.floor(t*2/b)+20,c=Math.floor(r*2/b)+20,l=Math.floor(i*2/b)+20;for(let e of V)e.dispose();s.setup(I,a*c*l,{xBound:t,yBound:r,zBound:i,gridDimX:a,gridDimY:c,gridDimZ:l}),V=s.boidBuffers.map(e=>ue(o(n,e,2),I)),F.material=V[s.current],P.setDrawRange(0,I*3)};return U(),{boidLimit:s.boidLimit,frame:e=>{L>0&&(I=L,L=0,U()),(i.width!==R||i.height!==z)&&(R=i.width,z=i.height,d.aspect=R/z,d.updateProjectionMatrix(),S.camera&&S.updateFrustums()),h.update(e);let r=t.createCommandEncoder();s.encode(r,e),t.queue.submit([r.finish()]),F.material=V[s.current],n.render(c,d)},setNumBoids:e=>{L=Math.min(e,s.boidLimit)},setAvoidMouse:()=>{},dispose:()=>{m.abort();for(let e of V)e.dispose();s.dispose(),S.dispose(),v.shadow.dispose(),O.dispose(),A.dispose(),P.dispose()}}};export{Se as createSim};
+`),ue=(e,t)=>{let n=V(e,`float`,t*6).toReadOnly(),r=v.div(3).mul(6),i=new p({color:new m(1,.02,0),roughness:.5,metalness:0,side:2,flatShading:!0});return i.positionNode=le({pos:S(n.element(r),n.element(r.add(1)),n.element(r.add(2))),vel:S(n.element(r.add(3)),n.element(r.add(4)),n.element(r.add(5))),corner:v.mod(3)}),i},de=S(.45,.55,.71),$=S(.65,.76,.88),fe=S(.84,.92,.94),pe=S(.44,.42,.4),me=I(()=>{let e=F.y,t=R(0,.95,e.mul(.5).add(.5)),n=R(-.08,.02,e),r=L(t,.8),i=R(-.01,.05,e).mul(R(.08,.22,e).oneMinus()),a=N($,de,r),o=N(pe,a,n);return P(N(o,fe,i.mul(.7)))})(),he=new n(-.3213937660622072,-.7660444011712928,-.5566704252156701),ge=new m().setRGB(1,.95686275,.8392157,e),_e=Math.PI,ve=new m().setRGB(.36,.45,.62,e),ye=new m().setRGB(.3,.28,.26,e),be=Math.PI,xe=8192,Se=async({device:t,renderer:n},i,a)=>{n.outputColorSpace=e,n.shadowMap.enabled=!0,n.shadowMap.type=1;let s=await te(t,ce,{zBound:`f32`,gridDimZ:`u32`}),c=new ee;c.backgroundNode=me;let d=new g(60,i.width/i.height,.3,1e3),m=new AbortController,h=ne(d,i,m.signal),v=new f(ge,_e);v.position.copy(he).negate(),v.castShadow=!0;let x=Math.min(xe,t.limits.maxTextureDimension2D);v.shadow.mapSize.set(x,x),v.shadow.bias=-1e-4,v.shadow.normalBias=.01,v.shadow.radius=2;let S=new se(v,{cascades:2,mode:`custom`,customSplitsCallback:(e,t,n,r)=>{r.push(.2,1)}}),C=B(0),w=B(0),T=j.sub(ie),E=re(T.dot(T).mul(C).add(w)),D=S;v.shadow.shadowNode=N(D,y(1,1,1,1),E),c.add(v,v.target),c.add(new u(ve,ye,be));let O=new r(1,1).rotateX(-Math.PI/2),A=new p({color:16777215,roughness:.5,metalness:0}),M=new _(O,A);M.receiveShadow=!0,c.add(M);let P=new l,F=new _(P);F.frustumCulled=!1,F.castShadow=!0,F.receiveShadow=!0,F.onBeforeShadow=(e,t,n,r,i,a)=>{a.colorWrite=!1},c.add(F);let I=a,L=0,R=0,z=0,V=[],H=e=>{let t=e*6.5;S.maxFar=t,S.lightMargin=e*4;let n=S.lightMargin+t*2;for(let{shadow:e}of[v,...S.lights])e.camera.far=n,e.camera.updateProjectionMatrix();let r=(.95*t)**2;C.value=1/(t**2-r),w.value=-r*C.value,S.camera&&S.updateFrustums()},U=()=>{let e=Math.max(1,I**(1/3)/7.5+k);h.resetView(e*3.8),M.scale.set(e*4,1,e*4),M.position.y=-e-1,H(e);let t=2*e-k,r=e-k,i=2*e-k,a=Math.floor(t*2/b)+20,c=Math.floor(r*2/b)+20,l=Math.floor(i*2/b)+20;for(let e of V)e.dispose();s.setup(I,a*c*l,{xBound:t,yBound:r,zBound:i,gridDimX:a,gridDimY:c,gridDimZ:l}),V=s.boidBuffers.map(e=>ue(o(n,e,1),I)),F.material=V[s.current],P.setDrawRange(0,I*3)};return U(),{boidLimit:s.boidLimit,frame:e=>{L>0&&(I=L,L=0,U()),(i.width!==R||i.height!==z)&&(R=i.width,z=i.height,d.aspect=R/z,d.updateProjectionMatrix(),S.camera&&S.updateFrustums()),h.update(e);let r=t.createCommandEncoder();s.encode(r,e),t.queue.submit([r.finish()]),F.material=V[s.current],n.render(c,d)},setNumBoids:e=>{L=Math.min(e,s.boidLimit)},setAvoidMouse:()=>{},dispose:()=>{m.abort();for(let e of V)e.dispose();s.dispose(),S.dispose(),v.shadow.dispose(),O.dispose(),A.dispose(),P.dispose()}}};export{Se as createSim};
