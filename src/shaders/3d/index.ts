@@ -35,11 +35,9 @@ export const kernels3d: BoidKernels = {
 };
 
 const boidVertex = wgslFn(`
-fn boidVertex(posXY: vec2<f32>, posZVelX: vec2<f32>, velYZ: vec2<f32>, corner: u32) -> vec3<f32> {
+fn boidVertex(pos: vec3<f32>, vel: vec3<f32>, corner: u32) -> vec3<f32> {
   const halfPi = 1.57079632679;
   const boidScale = 0.1;
-  let pos = vec3<f32>(posXY, posZVelX.x);
-  let vel = vec3<f32>(posZVelX.y, velYZ);
 
   // The triangle's corners: (-0.4, -0.5), (0, 0.5), (0.4, -0.5)
   let local = vec3<f32>((f32(corner) - 1.0) * 0.4, select(-0.5, 0.5, corner == 1u), 0.0);
@@ -60,9 +58,9 @@ export const createBoidMaterial = (
   boids: StorageBufferAttribute,
   numBoids: number,
 ) => {
-  // Each boid is 3 vec2s, see PackedBoid3d
-  const packed = storage(boids, "vec2", numBoids * 3).toReadOnly();
-  const boid = vertexIndex.div(3).mul(3);
+  // Each boid is 6 floats, see PackedBoid3d
+  const packed = storage(boids, "float", numBoids * 6).toReadOnly();
+  const boid = vertexIndex.div(3).mul(6);
 
   // Single triangles, so their (flat) normals face whichever side is visible
   const material = new MeshStandardNodeMaterial({
@@ -73,9 +71,16 @@ export const createBoidMaterial = (
     flatShading: true,
   });
   material.positionNode = boidVertex({
-    posXY: packed.element(boid),
-    posZVelX: packed.element(boid.add(1)),
-    velYZ: packed.element(boid.add(2)),
+    pos: vec3(
+      packed.element(boid),
+      packed.element(boid.add(1)),
+      packed.element(boid.add(2)),
+    ),
+    vel: vec3(
+      packed.element(boid.add(3)),
+      packed.element(boid.add(4)),
+      packed.element(boid.add(5)),
+    ),
     corner: vertexIndex.mod(3),
   });
   return material;

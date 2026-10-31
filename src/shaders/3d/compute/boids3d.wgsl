@@ -51,9 +51,9 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>, localID: u32, firstCell: u32, l
         for (var s = 0u; s < stagePasses; s += 1u) {
           let k = localID + s * searchBlockSize;
           if (k < tileCount) {
-            let other = boidsIn[sortedIndices[tileStart + k]];
-            tilePosVelX[k] = vec4<f32>(other.posXY, other.posZVelX);
-            tileVelYZ[k] = other.velYZ;
+            let other = unpackBoid(boidsIn[sortedIndices[tileStart + k]]);
+            tilePosVelX[k] = vec4<f32>(other.pos, other.vel.x);
+            tileVelYZ[k] = other.vel.yz;
           }
         }
       }

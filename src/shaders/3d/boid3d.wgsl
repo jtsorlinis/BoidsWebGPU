@@ -5,23 +5,26 @@ struct Boid3d {
   vel : vec3<f32>,
 };
 
-// vec3s are 16 byte aligned in storage, so boids are stored as 3 vec2s
+// vec3s are 16 byte aligned in storage, so boids are stored as 6 floats
 // (24 bytes instead of 32) and unpacked into Boid3d
 struct PackedBoid3d {
-  posXY : vec2<f32>,
-  posZVelX : vec2<f32>,
-  velYZ : vec2<f32>,
+  posX : f32,
+  posY : f32,
+  posZ : f32,
+  velX : f32,
+  velY : f32,
+  velZ : f32,
 };
 
 fn unpackBoid(boid: PackedBoid3d) -> Boid3d {
   return Boid3d(
-    vec3<f32>(boid.posXY, boid.posZVelX.x),
-    vec3<f32>(boid.posZVelX.y, boid.velYZ),
+    vec3<f32>(boid.posX, boid.posY, boid.posZ),
+    vec3<f32>(boid.velX, boid.velY, boid.velZ),
   );
 }
 
 fn packBoid(boid: Boid3d) -> PackedBoid3d {
-  return PackedBoid3d(boid.pos.xy, vec2<f32>(boid.pos.z, boid.vel.x), boid.vel.yz);
+  return PackedBoid3d(boid.pos.x, boid.pos.y, boid.pos.z, boid.vel.x, boid.vel.y, boid.vel.z);
 }
 
 // Shared so every kernel that bins a boid gets the exact same cell

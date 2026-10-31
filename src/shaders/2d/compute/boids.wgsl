@@ -1,6 +1,6 @@
 @binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read> boidsIn : array<Boid>;
-@binding(2) @group(0) var<storage, read_write> boidsOut : array<Boid>;
+@binding(1) @group(0) var<storage, read> boidsIn : array<vec4<f32>>;
+@binding(2) @group(0) var<storage, read_write> boidsOut : array<vec4<f32>>;
 @binding(3) @group(0) var<storage, read> sortedIndices : array<u32>;
 @binding(4) @group(0) var<storage, read> gridOffsets : array<u32>;
 @binding(5) @group(0) var<storage, read_write> gridOffsetsIn : array<atomic<u32>>;
@@ -51,8 +51,7 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
       for (var s = 0u; s < stagePasses; s += 1u) {
         let k = localID + s * searchBlockSize;
         if (k < tileCount) {
-          let other = boidsIn[sortedIndices[tileStart + k]];
-          tile[k] = vec4<f32>(other.pos, other.vel);
+          tile[k] = boidsIn[sortedIndices[tileStart + k]];
         }
       }
     }
@@ -82,14 +81,14 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
         let o1 = boidsIn[sortedIndices[j + 1u]];
         let o2 = boidsIn[sortedIndices[j + 2u]];
         let o3 = boidsIn[sortedIndices[j + 3u]];
-        addNeighbour(pos, o0.pos, o0.vel, &center, &close, &avgVel, &neighbours);
-        addNeighbour(pos, o1.pos, o1.vel, &center, &close, &avgVel, &neighbours);
-        addNeighbour(pos, o2.pos, o2.vel, &center, &close, &avgVel, &neighbours);
-        addNeighbour(pos, o3.pos, o3.vel, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, o0.xy, o0.zw, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, o1.xy, o1.zw, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, o2.xy, o2.zw, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, o3.xy, o3.zw, &center, &close, &avgVel, &neighbours);
       }
       for (; j < end; j += 1u) {
         let other = boidsIn[sortedIndices[j]];
-        addNeighbour(pos, other.pos, other.vel, &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, other.xy, other.zw, &center, &close, &avgVel, &neighbours);
       }
     }
   }
@@ -141,9 +140,9 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   // Threads past the last boid still take part in the staging, as copies of the last boid
   let last = min(first + searchBlockSize, params.numBoids) - 1u;
   let index = first + localID;
-  var boid = boidsIn[sortedIndices[min(index, last)]];
-  let firstCell = getGridID(boidsIn[sortedIndices[first]].pos);
-  let lastCell = getGridID(boidsIn[sortedIndices[last]].pos);
+  var boid = unpackBoid(boidsIn[sortedIndices[min(index, last)]]);
+  let firstCell = getGridID(boidsIn[sortedIndices[first]].xy);
+  let lastCell = getGridID(boidsIn[sortedIndices[last]].xy);
 
   mergedBehaviours(&boid, localID, firstCell, lastCell);
   limitSpeed(&boid);
@@ -156,7 +155,7 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
 
   // Written in cell order, so next frame's neighbour reads stay close together
   if (index < params.numBoids) {
-    boidsOut[index] = boid;
+    boidsOut[index] = packBoid(boid);
 
     // Bin the boid into next frame's grid, saving a separate update grid pass
     let cell = getGridID(boid.pos);

@@ -181,7 +181,7 @@ export const createSim = async (
     });
 
     boidMaterials = compute.boidBuffers.map((boids) =>
-      createBoidMaterial(shareWithRenderer(renderer, boids, 2), numBoids),
+      createBoidMaterial(shareWithRenderer(renderer, boids, 1), numBoids),
     );
     boidMesh.material = boidMaterials[compute.current];
     boidGeometry.setDrawRange(0, numBoids * 3);
