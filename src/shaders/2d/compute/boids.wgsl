@@ -40,10 +40,10 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
   // into the tile when they fit
   for (var i: i32 = -1; i <= 1; i += 1) {
     let row = u32(i * i32(params.gridDimX));
-    let start = gridOffsets[cell + row - 1u];
-    let end = gridOffsets[cell + row + 2u];
-    let tileStart = gridOffsets[firstCell + row - 1u];
-    let tileCount = gridOffsets[lastCell + row + 2u] - tileStart;
+    let start = gridOffsets[cell + row - 2u];
+    let end = gridOffsets[cell + row + 3u];
+    let tileStart = gridOffsets[firstCell + row - 2u];
+    let tileCount = gridOffsets[lastCell + row + 3u] - tileStart;
     let tiled = tileCount <= tileSize;
 
     workgroupBarrier();

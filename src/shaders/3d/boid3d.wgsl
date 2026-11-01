@@ -29,7 +29,7 @@ fn packBoid(boid: Boid3d) -> PackedBoid3d {
 
 // Shared so every kernel that bins a boid gets the exact same cell
 fn getGridID(pos: vec3<f32>) -> u32 {
-  let x = i32(floor(pos.x * params.gridInverseCellSize)) + i32(params.gridDimX / 2u);
+  let x = i32(floor(pos.x * params.gridInverseCellSize * 2.0)) + i32(params.gridDimX / 2u);
   let y = i32(floor(pos.y * params.gridInverseCellSize)) + i32(params.gridDimY / 2u);
   let z = i32(floor(pos.z * params.gridInverseCellSize)) + i32(params.gridDimZ / 2u);
   return params.gridDimX * params.gridDimY * u32(z) + params.gridDimX * u32(y) + u32(x);

@@ -165,8 +165,8 @@ export const createSim = async (
     const yBound = spaceBounds - edgeMargin;
     const zBound = 2 * spaceBounds - edgeMargin;
 
-    // Spatial grid setup
-    const gridDimX = Math.floor((xBound * 2) / visualRange) + 20;
+    // Spatial grid setup, GPU cells are half as wide in x
+    const gridDimX = (Math.floor((xBound * 2) / visualRange) + 20) * 2;
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
     const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
 

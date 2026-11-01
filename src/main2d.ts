@@ -82,8 +82,8 @@ export const createSim = async (
     const xBound = view.orthoSize * aspect - edgeMargin;
     const yBound = view.orthoSize - edgeMargin;
 
-    // Spatial grid setup
-    const gridDimX = Math.floor((xBound * 2) / visualRange) + 30;
+    // Spatial grid setup, GPU cells are half as wide in x
+    const gridDimX = (Math.floor((xBound * 2) / visualRange) + 30) * 2;
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 30;
     compute.setup(numBoids, gridDimX * gridDimY, {
       xBound,
