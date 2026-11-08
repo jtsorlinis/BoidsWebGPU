@@ -15,8 +15,7 @@ fn addNeighbour(pos: vec3<f32>, otherPos: vec3<f32>, otherVel: vec3<f32>, center
   let distSq = dot(diff, diff);
   if (distSq < params.visualRangeSq && distSq > 0.0) {
     if (distSq < params.minDistanceSq) {
-      let invDistSq = 1.0 / distSq;
-      *close += diff * invDistSq;
+      *close += diff * (1.0 / distSq - params.invMinDistanceSq);
     }
     *center += otherPos;
     *avgVel += otherVel;

@@ -17,7 +17,7 @@ import {
 export const edgeMargin = 0.5;
 export const visualRange = 0.5;
 const maxSpeed = 2;
-const minDistance = 0.15;
+const minDistance = 0.18;
 const cohesionFactor = 2;
 const alignmentFactor = 5;
 const separationFactor = 1;
@@ -32,6 +32,7 @@ const sharedParams = {
   turnSpeed: "f32",
   visualRangeSq: "f32",
   minDistanceSq: "f32",
+  invMinDistanceSq: "f32",
   cohesionFactor: "f32",
   alignmentFactor: "f32",
   separationFactor: "f32",
@@ -69,6 +70,7 @@ export const createBoidCompute = async <Name extends string>(
   params.set("turnSpeed", maxSpeed * 3);
   params.set("visualRangeSq", visualRange * visualRange);
   params.set("minDistanceSq", minDistance * minDistance);
+  params.set("invMinDistanceSq", 1 / (minDistance * minDistance));
   params.set("cohesionFactor", cohesionFactor);
   params.set("alignmentFactor", alignmentFactor);
   params.set("separationFactor", separationFactor);
