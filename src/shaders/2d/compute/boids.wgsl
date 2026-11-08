@@ -122,7 +122,8 @@ fn avoidPredators(boid: ptr<function, Boid>) {
       && abs((*boid).pos.y) < params.yBound
       && abs((*boid).pos.x) < params.xBound) {
     let dist = max(sqrt(params.minDistanceSq), zoomedDist);
-    (*boid).vel += normalize(diff) / (dist * dist) * params.dt;
+    let strength = max(1.0, 2.0 / params.zoom);
+    (*boid).vel += normalize(diff) / (dist * dist) * strength * params.dt;
   }
 }
 
