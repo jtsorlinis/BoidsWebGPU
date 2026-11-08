@@ -223,7 +223,7 @@ export const createSim = async (
     setNumBoids: (count: number) => {
       pendingNumBoids = Math.min(count, compute.boidLimit);
     },
-    setAvoidMouse: () => {},
+    setMousePredator: () => {},
     dispose: () => {
       abort.abort();
       for (const material of boidMaterials) material.dispose();

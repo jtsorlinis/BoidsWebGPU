@@ -15,7 +15,7 @@ export const createSim = async (
   renderer.outputColorSpace = LinearSRGBColorSpace;
 
   const compute = await createBoidCompute(device, kernels2d, {
-    avoidMouse: "u32",
+    mousePredator: "u32",
     zoom: "f32",
     mousePos: "vec2<f32>",
     renderWidth: "u32",
@@ -134,8 +134,8 @@ export const createSim = async (
     setNumBoids: (count: number) => {
       pendingNumBoids = Math.min(count, compute.boidLimit);
     },
-    setAvoidMouse: (avoid: boolean) => {
-      params.set("avoidMouse", avoid ? 1 : 0);
+    setMousePredator: (enabled: boolean) => {
+      params.set("mousePredator", enabled ? 1 : 0);
     },
     dispose: () => {
       abort.abort();

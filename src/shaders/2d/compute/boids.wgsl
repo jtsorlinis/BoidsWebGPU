@@ -143,7 +143,7 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   mergedBehaviours(&boid, localID, firstCell, lastCell);
   limitSpeed(&boid);
   keepInBounds(&boid);
-  if (params.avoidMouse > 0) {
+  if (params.mousePredator > 0) {
     avoidPredators(&boid);
   }
 

@@ -33,7 +33,7 @@ fn worldToScreen(worldPos: vec2<f32>) -> vec2<f32> {
 
 fn getBoidColour(boid: Boid) -> u32 {
   var d = 1.0;
-  if (params.avoidMouse > 0u) {
+  if (params.mousePredator > 0u) {
     d = distance(boid.pos, params.mousePos) / params.zoom;
   }
   return pack4x8unorm(vec4<f32>(1.0, d, d, 1.0));
