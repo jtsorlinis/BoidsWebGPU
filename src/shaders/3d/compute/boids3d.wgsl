@@ -117,15 +117,9 @@ fn limitSpeed(boid: ptr<function, Boid3d>) {
 }
 
 fn keepInBounds(boid: ptr<function, Boid3d>) {
-  if (abs((*boid).pos.x) > params.xBound) {
-    (*boid).vel.x -= sign((*boid).pos.x) * params.turnSpeed * params.dt;
-  }
-  if (abs((*boid).pos.y) > params.yBound) {
-    (*boid).vel.y -= sign((*boid).pos.y) * params.turnSpeed * params.dt;
-  }
-  if (abs((*boid).pos.z) > params.zBound) {
-    (*boid).vel.z -= sign((*boid).pos.z) * params.turnSpeed * params.dt;
-  }
+  let bounds = vec3<f32>(params.xBound, params.yBound, params.zBound);
+  let outside = step(bounds, abs((*boid).pos));
+  (*boid).vel -= sign((*boid).pos) * outside * (params.turnSpeed * params.dt);
 }
 
 @compute @workgroup_size(searchBlockSize)

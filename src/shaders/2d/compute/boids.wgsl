@@ -110,12 +110,9 @@ fn limitSpeed(boid: ptr<function, Boid>) {
 }
 
 fn keepInBounds(boid: ptr<function, Boid>) {
-  if (abs((*boid).pos.x) > params.xBound) {
-    (*boid).vel.x -= sign((*boid).pos.x) * params.turnSpeed * params.dt;
-  }
-  if (abs((*boid).pos.y) > params.yBound) {
-    (*boid).vel.y -= sign((*boid).pos.y) * params.turnSpeed * params.dt;
-  }
+  let bounds = vec2<f32>(params.xBound, params.yBound);
+  let outside = step(bounds, abs((*boid).pos));
+  (*boid).vel -= sign((*boid).pos) * outside * (params.turnSpeed * params.dt);
 }
 
 fn avoidPredators(boid: ptr<function, Boid>) {
