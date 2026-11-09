@@ -38,10 +38,8 @@ const ambientSky = new Color().setRGB(0.36, 0.45, 0.62, SRGBColorSpace);
 const ambientGround = new Color().setRGB(0.3, 0.28, 0.26, SRGBColorSpace);
 const ambientIntensity = Math.PI;
 const shadowMapSize = 8192;
-// The camera as a predator: boids within this radius of it swim out of its way. The radius grows
-// with the flock's space, so small flocks aren't all shoved into a corner
-const predatorReach = 0.6;
-const maxPredatorRadius = 3;
+// The camera as a predator: boids within this radius of it swim out of its way
+const predatorRadius = 3;
 const predatorStrength = 6;
 
 export const createSim = async (
@@ -63,6 +61,7 @@ export const createSim = async (
     predatorStrength: "f32",
   });
   const { params } = compute;
+  params.set("predatorRadius", predatorRadius);
   params.set("predatorStrength", predatorStrength);
 
   const scene = new Scene();
@@ -173,10 +172,6 @@ export const createSim = async (
     floor.scale.set(spaceBounds * 4, 1, spaceBounds * 4);
     floor.position.y = -spaceBounds - 1;
     updateShadows(spaceBounds);
-    params.set(
-      "predatorRadius",
-      Math.min(spaceBounds * predatorReach, maxPredatorRadius),
-    );
 
     const xBound = 2 * spaceBounds - edgeMargin;
     const yBound = spaceBounds - edgeMargin;
