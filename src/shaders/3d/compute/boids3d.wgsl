@@ -122,6 +122,18 @@ fn keepInBounds(boid: ptr<function, Boid3d>) {
   (*boid).vel -= sign((*boid).pos) * outside * (params.turnSpeed * params.dt);
 }
 
+fn avoidPredator(boid: ptr<function, Boid3d>) {
+  let diff = (*boid).pos - params.predatorPos;
+  let scaledDist = length(diff) / params.predatorRadius;
+  let bounds = vec3<f32>(params.xBound, params.yBound, params.zBound);
+  if (scaledDist < 1.0 && all(abs((*boid).pos) < bounds)) {
+    // Out to the side of the predator's path, rather than straight away from it
+    let side = diff - dot(diff, params.predatorDir) * params.predatorDir;
+    let dist = max(sqrt(params.minDistanceSq), scaledDist);
+    (*boid).vel += side / max(length(side), 1e-6) / (dist * dist) * params.predatorStrength * params.dt;
+  }
+}
+
 @compute @workgroup_size(searchBlockSize)
 fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_index) localID : u32) {
   let first = (GroupID.y * params.updateGroupsX + GroupID.x) * searchBlockSize;
@@ -139,6 +151,9 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   mergedBehaviours(&boid, localID, firstCell, lastCell);
   limitSpeed(&boid);
   keepInBounds(&boid);
+  if (params.cameraPredator > 0) {
+    avoidPredator(&boid);
+  }
 
   boid.pos += boid.vel * params.dt;
 

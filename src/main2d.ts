@@ -134,7 +134,7 @@ export const createSim = async (
     setNumBoids: (count: number) => {
       pendingNumBoids = Math.min(count, compute.boidLimit);
     },
-    setMousePredator: (enabled: boolean) => {
+    setPredator: (enabled: boolean) => {
       params.set("mousePredator", enabled ? 1 : 0);
     },
     dispose: () => {

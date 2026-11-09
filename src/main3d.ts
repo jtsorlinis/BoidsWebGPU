@@ -38,6 +38,11 @@ const ambientSky = new Color().setRGB(0.36, 0.45, 0.62, SRGBColorSpace);
 const ambientGround = new Color().setRGB(0.3, 0.28, 0.26, SRGBColorSpace);
 const ambientIntensity = Math.PI;
 const shadowMapSize = 8192;
+// The camera as a predator: boids within this radius of it swim out of its way. The radius grows
+// with the flock's space, so small flocks aren't all shoved into a corner
+const predatorReach = 0.6;
+const maxPredatorRadius = 3;
+const predatorStrength = 6;
 
 export const createSim = async (
   { device, renderer }: GPUContext,
@@ -51,7 +56,14 @@ export const createSim = async (
   const compute = await createBoidCompute(device, kernels3d, {
     zBound: "f32",
     gridDimZ: "u32",
+    cameraPredator: "u32",
+    predatorPos: "vec3<f32>",
+    predatorDir: "vec3<f32>",
+    predatorRadius: "f32",
+    predatorStrength: "f32",
   });
+  const { params } = compute;
+  params.set("predatorStrength", predatorStrength);
 
   const scene = new Scene();
   scene.backgroundNode = skyNode;
@@ -124,6 +136,7 @@ export const createSim = async (
 
   let numBoids = initialBoids;
   let pendingNumBoids = 0;
+  const cameraForward = new Vector3();
   let viewWidth = 0;
   let viewHeight = 0;
 
@@ -160,6 +173,10 @@ export const createSim = async (
     floor.scale.set(spaceBounds * 4, 1, spaceBounds * 4);
     floor.position.y = -spaceBounds - 1;
     updateShadows(spaceBounds);
+    params.set(
+      "predatorRadius",
+      Math.min(spaceBounds * predatorReach, maxPredatorRadius),
+    );
 
     const xBound = 2 * spaceBounds - edgeMargin;
     const yBound = spaceBounds - edgeMargin;
@@ -207,6 +224,11 @@ export const createSim = async (
       }
     }
     controls.update(deltaTime);
+    // The sim's z runs the other way to three.js's
+    const { x, y, z } = camera.position;
+    params.set("predatorPos", [x, y, -z]);
+    const forward = camera.getWorldDirection(cameraForward);
+    params.set("predatorDir", [forward.x, forward.y, -forward.z]);
 
     const encoder = device.createCommandEncoder();
     compute.encode(encoder, deltaTime);
@@ -223,7 +245,9 @@ export const createSim = async (
     setNumBoids: (count: number) => {
       pendingNumBoids = Math.min(count, compute.boidLimit);
     },
-    setMousePredator: () => {},
+    setPredator: (enabled: boolean) => {
+      params.set("cameraPredator", enabled ? 1 : 0);
+    },
     dispose: () => {
       abort.abort();
       for (const material of boidMaterials) material.dispose();

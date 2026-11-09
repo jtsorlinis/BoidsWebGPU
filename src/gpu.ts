@@ -107,12 +107,13 @@ export const shareWithRenderer = (
   return attribute;
 };
 
-export type ParamType = "u32" | "f32" | "vec2<f32>";
+export type ParamType = "u32" | "f32" | "vec2<f32>" | "vec3<f32>";
 
-const paramSizes: Record<ParamType, number> = {
-  u32: 4,
-  f32: 4,
-  "vec2<f32>": 8,
+const paramLayouts: Record<ParamType, { size: number; align: number }> = {
+  u32: { size: 4, align: 4 },
+  f32: { size: 4, align: 4 },
+  "vec2<f32>": { size: 8, align: 8 },
+  "vec3<f32>": { size: 12, align: 16 },
 };
 
 // A uniform block laid out with WGSL's uniform rules. The shaders get their Params
@@ -131,9 +132,8 @@ export class Params<Name extends string> {
     let offset = 0;
     const members: string[] = [];
     for (const [name, type] of Object.entries(layout) as [Name, ParamType][]) {
-      // Each member is aligned to its own size
-      const size = paramSizes[type];
-      offset = Math.ceil(offset / size) * size;
+      const { size, align } = paramLayouts[type];
+      offset = Math.ceil(offset / align) * align;
       this.fields.set(name, { offset, type });
       members.push(`  ${name}: ${type},`);
       offset += size;
@@ -148,16 +148,16 @@ export class Params<Name extends string> {
     this.wgsl = `struct Params {\n${members.join("\n")}\n};\n`;
   }
 
-  set(name: Name, value: number | readonly [number, number]) {
+  set(name: Name, value: number | readonly number[]) {
     const { offset, type } = this.fields.get(name)!;
     if (type === "u32") {
       this.data.setUint32(offset, value as number, true);
     } else if (type === "f32") {
       this.data.setFloat32(offset, value as number, true);
     } else {
-      const [x, y] = value as readonly [number, number];
-      this.data.setFloat32(offset, x, true);
-      this.data.setFloat32(offset + 4, y, true);
+      (value as readonly number[]).forEach((component, i) => {
+        this.data.setFloat32(offset + i * 4, component, true);
+      });
     }
   }
 
