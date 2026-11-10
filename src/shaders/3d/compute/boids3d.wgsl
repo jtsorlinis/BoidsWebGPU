@@ -75,10 +75,18 @@ fn mergedBehaviours(boid: ptr<function, Boid3d>, localID: u32, firstCell: u32, l
           addNeighbour(pos, o2.xyz, vec3<f32>(o2.w, v2), &center, &close, &avgVel, &neighbours);
           addNeighbour(pos, o3.xyz, vec3<f32>(o3.w, v3), &center, &close, &avgVel, &neighbours);
         }
-        for (; j < tileEnd; j += 1u) {
-          let other = tilePosVelX[j];
-          addNeighbour(pos, other.xyz, vec3<f32>(other.w, tileVelYZ[j]), &center, &close, &avgVel, &neighbours);
-        }
+        // Up to 3 are left. Reading all 3 slots and testing the ones past the
+        // end as the boid itself, which is never a neighbour, avoids a branch
+        let last = tileEnd - 1u;
+        let j0 = min(j, last);
+        let j1 = min(j + 1u, last);
+        let j2 = min(j + 2u, last);
+        let o0 = tilePosVelX[j0];
+        let o1 = tilePosVelX[j1];
+        let o2 = tilePosVelX[j2];
+        addNeighbour(pos, select(pos, o0.xyz, j < tileEnd), vec3<f32>(o0.w, tileVelYZ[j0]), &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, select(pos, o1.xyz, j + 1u < tileEnd), vec3<f32>(o1.w, tileVelYZ[j1]), &center, &close, &avgVel, &neighbours);
+        addNeighbour(pos, select(pos, o2.xyz, j + 2u < tileEnd), vec3<f32>(o2.w, tileVelYZ[j2]), &center, &close, &avgVel, &neighbours);
       } else {
         var j = start;
         for (; j + 3u < end; j += 4u) {

@@ -69,10 +69,18 @@ fn mergedBehaviours(boid: ptr<function, Boid>, localID: u32, firstCell: u32, las
         addNeighbour(pos, o2.xy, o2.zw, &center, &close, &avgVel, &neighbours);
         addNeighbour(pos, o3.xy, o3.zw, &center, &close, &avgVel, &neighbours);
       }
-      for (; j < tileEnd; j += 1u) {
-        let other = tile[j];
-        addNeighbour(pos, other.xy, other.zw, &center, &close, &avgVel, &neighbours);
-      }
+      // Up to 3 are left. Reading all 3 slots and testing the ones past the
+      // end as the boid itself, which is never a neighbour, avoids a branch
+      let last = tileEnd - 1u;
+      let j0 = min(j, last);
+      let j1 = min(j + 1u, last);
+      let j2 = min(j + 2u, last);
+      let o0 = tile[j0];
+      let o1 = tile[j1];
+      let o2 = tile[j2];
+      addNeighbour(pos, select(pos, o0.xy, j < tileEnd), o0.zw, &center, &close, &avgVel, &neighbours);
+      addNeighbour(pos, select(pos, o1.xy, j + 1u < tileEnd), o1.zw, &center, &close, &avgVel, &neighbours);
+      addNeighbour(pos, select(pos, o2.xy, j + 2u < tileEnd), o2.zw, &center, &close, &avgVel, &neighbours);
     } else {
       var j = start;
       for (; j + 3u < end; j += 4u) {
