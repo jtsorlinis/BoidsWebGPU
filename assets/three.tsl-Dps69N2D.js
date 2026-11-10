@@ -1,118 +1,118 @@
-import{_ as e,n as t,r as n,t as r,u as i}from"./gpu-5JyGwGJJ.js";var{clamp:a,degToRad:o}=e,s=.1,c=.1,l=(e,t,n)=>Math.abs(t-e)<=n?t:e+Math.sign(t-e)*n,u=(e,t,n)=>{let r=!1,i=0,a=0;e.addEventListener(`pointerdown`,t=>{(t.button===0||t.button===2)&&(r=!0,i=t.clientX,a=t.clientY,e.setPointerCapture(t.pointerId),t.pointerType===`mouse`&&e.requestPointerLock?.()?.catch(()=>{}))},{signal:t}),e.addEventListener(`pointermove`,t=>{let o=document.pointerLockElement===e,s=o?t.movementX:t.clientX-i,c=o?t.movementY:t.clientY-a;i=t.clientX,a=t.clientY,r&&n(s,c)},{signal:t});let o=()=>{r&&(r=!1,document.pointerLockElement===e&&document.exitPointerLock())};return e.addEventListener(`pointerup`,o,{signal:t}),e.addEventListener(`pointercancel`,o,{signal:t}),e.addEventListener(`contextmenu`,e=>e.preventDefault(),{signal:t}),{isDragging:()=>r}},d=(e,t)=>{let n=1,r=1,i={x:0,y:0,orthoSize:1,resetView:e=>{i.x=0,i.y=0,i.orthoSize=e,n=e,r=n+Math.sqrt(n)/2},update:e=>{n=a(n,2,r),i.orthoSize+=(n-i.orthoSize)*Math.min(e*10,1)}};return u(e,t,(e,t)=>{let n=i.orthoSize/57.5;i.x-=e*s*n,i.y+=t*s*n}),e.addEventListener(`wheel`,e=>{let t=e.deltaMode===WheelEvent.DOM_DELTA_LINE?e.deltaY/3:e.deltaY/100;n+=t*c*(i.orthoSize/2)},{signal:t,passive:!0}),i},f=3,p=10,m=3,h=o(88),g=o(s*1.5),_=(e,t,n)=>{e.rotation.order=`YXZ`;let r={x:0,y:0,z:0},i=new Set,o=u(t,n,(t,n)=>{e.rotation.y-=t*g,e.rotation.x=a(e.rotation.x-n*g,-h,h)});window.addEventListener(`keydown`,e=>{e.ctrlKey||e.metaKey||e.altKey||i.add(e.code)},{signal:n}),window.addEventListener(`keyup`,e=>i.delete(e.code),{signal:n}),window.addEventListener(`blur`,()=>i.clear(),{signal:n});let s=(...e)=>e.some(e=>i.has(e)),c=(e,t,n,r)=>{let i=!!n-+!!t;return e*i<0&&(e=0),l(e,i,f*r)};return{resetView:t=>{e.position.set(0,0,t),e.rotation.set(0,0,0)},update:t=>{if(r.x=c(r.x,s(`KeyA`,`ArrowLeft`),s(`KeyD`,`ArrowRight`),t),r.y=c(r.y,s(`KeyQ`),s(`KeyE`),t),r.z=c(r.z,s(`KeyS`,`ArrowDown`),s(`KeyW`,`ArrowUp`),t),o.isDragging()){let n=p*(s(`ShiftLeft`,`ShiftRight`)?m:1)*t;e.translateX(r.x*n),e.translateY(r.y*n),e.translateZ(-r.z*n)}}}},v=`// Shared by the prefix sum kernels, which also get the boid include for Params and blockSize
-
-fn getCell(groupID: u32, localID: u32, row: u32) -> u32 {
-  return groupID * blockCells + row * blockSize + localID;
-}
-
-var<workgroup> scanTemp : array<array<vec4<u32>, blockSize>, 2>;
-
-// Exclusive scan of a group's 4 rows of values in row order, total gets their sum
-fn groupScan(values: vec4<u32>, localID: u32, total: ptr<function, u32>) -> vec4<u32> {
-  // The previous scan may still be reading scanTemp
-  workgroupBarrier();
-  var inclusive = values;
-  var buf = 0u;
-  for (var offset = 1u; offset < blockSize; offset *= 2u) {
-    scanTemp[buf][localID] = inclusive;
-    workgroupBarrier();
-    if (localID >= offset) {
-      inclusive += scanTemp[buf][localID - offset];
-    }
-    buf ^= 1u;
-  }
-  buf ^= 1u;
-  // The last step stored sums of each half of the rows
-  let rowTotals = scanTemp[buf][blockSize - 1u] + scanTemp[buf][blockSize / 2u - 1u];
-  *total = rowTotals.x + rowTotals.y + rowTotals.z + rowTotals.w;
-  return inclusive - values + vec4<u32>(0u, rowTotals.x, rowTotals.x + rowTotals.y, *total - rowTotals.w);
-}
-`,y=`@binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read> gridOffsetsIn : array<u32>;
-@binding(2) @group(0) var<storage, read_write> gridSums : array<u32>;
-
-var<workgroup> sumTemp : array<u32, blockSize>;
-
-@compute @workgroup_size(blockSize)
-fn main(@builtin(local_invocation_index) localID : u32, @builtin(workgroup_id) GroupID : vec3<u32>) {
-  let groupID = GroupID.x;
-
-  var sum = 0u;
-  for (var row = 0u; row < 4u; row += 1u) {
-    let cell = getCell(groupID, localID, row);
-    if (cell < params.gridTotalCells) {
-      sum += gridOffsetsIn[cell];
-    }
-  }
-  sumTemp[localID] = sum;
-  workgroupBarrier();
-
-  for (var stride = blockSize / 2u; stride > 0u; stride /= 2u) {
-    if (localID < stride) {
-      sumTemp[localID] += sumTemp[localID + stride];
-    }
-    workgroupBarrier();
-  }
-
-  if (localID == 0u) {
-    gridSums[groupID] = sumTemp[0];
-  }
-}
-`,b=`@binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read_write> gridSums : array<u32>;
-
-// Single group, turns the block totals into block offsets in place
-@compute @workgroup_size(blockSize)
-fn main(@builtin(local_invocation_index) localID : u32) {
-  var carry = 0u;
-  for (var first = 0u; first < params.blocks; first += blockCells) {
-    var sums = vec4<u32>();
-    for (var row = 0u; row < 4u; row += 1u) {
-      let i = first + row * blockSize + localID;
-      if (i < params.blocks) {
-        sums[row] = gridSums[i];
-      }
-    }
-
-    var total = 0u;
-    let offsets = groupScan(sums, localID, &total) + carry;
-    for (var row = 0u; row < 4u; row += 1u) {
-      let i = first + row * blockSize + localID;
-      if (i < params.blocks) {
-        gridSums[i] = offsets[row];
-      }
-    }
-    carry += total;
-  }
-}
-`,x=`@binding(0) @group(0) var<uniform> params : Params;
-@binding(1) @group(0) var<storage, read_write> gridOffsetsIn : array<u32>;
-@binding(2) @group(0) var<storage, read_write> gridOffsets : array<u32>;
-@binding(3) @group(0) var<storage, read> gridSums : array<u32>;
-
-// Scans each block of cells, starting from the block's offset from scanSums
-@compute @workgroup_size(blockSize)
-fn main(@builtin(local_invocation_index) localID : u32, @builtin(workgroup_id) GroupID : vec3<u32>) {
-  let groupID = GroupID.x;
-
-  var counts = vec4<u32>();
-  for (var row = 0u; row < 4u; row += 1u) {
-    let cell = getCell(groupID, localID, row);
-    if (cell < params.gridTotalCells) {
-      counts[row] = gridOffsetsIn[cell];
-    }
-  }
-
-  var total = 0u;
-  let offsets = groupScan(counts, localID, &total) + gridSums[groupID];
-  for (var row = 0u; row < 4u; row += 1u) {
-    let cell = getCell(groupID, localID, row);
-    if (cell < params.gridTotalCells) {
-      gridOffsets[cell] = offsets[row];
-      // Reset the counts so the boids kernel can fill them in for next frame
-      gridOffsetsIn[cell] = 0u;
-    }
-  }
-}
+import{_ as e,n as t,r as n,t as r,u as i}from"./gpu-5JyGwGJJ.js";var{clamp:a,degToRad:o}=e,s=.1,c=.1,l=(e,t,n)=>Math.abs(t-e)<=n?t:e+Math.sign(t-e)*n,u=(e,t,n)=>{let r=!1,i=0,a=0;e.addEventListener(`pointerdown`,t=>{(t.button===0||t.button===2)&&(r=!0,i=t.clientX,a=t.clientY,e.setPointerCapture(t.pointerId),t.pointerType===`mouse`&&e.requestPointerLock?.()?.catch(()=>{}))},{signal:t}),e.addEventListener(`pointermove`,t=>{let o=document.pointerLockElement===e,s=o?t.movementX:t.clientX-i,c=o?t.movementY:t.clientY-a;i=t.clientX,a=t.clientY,r&&n(s,c)},{signal:t});let o=()=>{r&&(r=!1,document.pointerLockElement===e&&document.exitPointerLock())};return e.addEventListener(`pointerup`,o,{signal:t}),e.addEventListener(`pointercancel`,o,{signal:t}),e.addEventListener(`contextmenu`,e=>e.preventDefault(),{signal:t}),{isDragging:()=>r}},d=(e,t)=>{let n=1,r=1,i={x:0,y:0,orthoSize:1,resetView:e=>{i.x=0,i.y=0,i.orthoSize=e,n=e,r=n+Math.sqrt(n)/2},update:e=>{n=a(n,2,r),i.orthoSize+=(n-i.orthoSize)*Math.min(e*10,1)}};return u(e,t,(e,t)=>{let n=i.orthoSize/57.5;i.x-=e*s*n,i.y+=t*s*n}),e.addEventListener(`wheel`,e=>{let t=e.deltaMode===WheelEvent.DOM_DELTA_LINE?e.deltaY/3:e.deltaY/100;n+=t*c*(i.orthoSize/2)},{signal:t,passive:!0}),i},f=3,p=10,m=3,h=o(88),g=o(s*1.5),_=(e,t,n)=>{e.rotation.order=`YXZ`;let r={x:0,y:0,z:0},i=new Set,o=u(t,n,(t,n)=>{e.rotation.y-=t*g,e.rotation.x=a(e.rotation.x-n*g,-h,h)});window.addEventListener(`keydown`,e=>{e.ctrlKey||e.metaKey||e.altKey||i.add(e.code)},{signal:n}),window.addEventListener(`keyup`,e=>i.delete(e.code),{signal:n}),window.addEventListener(`blur`,()=>i.clear(),{signal:n});let s=(...e)=>e.some(e=>i.has(e)),c=(e,t,n,r)=>{let i=!!n-+!!t;return e*i<0&&(e=0),l(e,i,f*r)};return{resetView:t=>{e.position.set(0,0,t),e.rotation.set(0,0,0)},update:t=>{if(r.x=c(r.x,s(`KeyA`,`ArrowLeft`),s(`KeyD`,`ArrowRight`),t),r.y=c(r.y,s(`KeyQ`),s(`KeyE`),t),r.z=c(r.z,s(`KeyS`,`ArrowDown`),s(`KeyW`,`ArrowUp`),t),o.isDragging()){let n=p*(s(`ShiftLeft`,`ShiftRight`)?m:1)*t;e.translateX(r.x*n),e.translateY(r.y*n),e.translateZ(-r.z*n)}}}},v=`// Shared by the prefix sum kernels, which also get the boid include for Params and blockSize\r
+\r
+fn getCell(groupID: u32, localID: u32, row: u32) -> u32 {\r
+  return groupID * blockCells + row * blockSize + localID;\r
+}\r
+\r
+var<workgroup> scanTemp : array<array<vec4<u32>, blockSize>, 2>;\r
+\r
+// Exclusive scan of a group's 4 rows of values in row order, total gets their sum\r
+fn groupScan(values: vec4<u32>, localID: u32, total: ptr<function, u32>) -> vec4<u32> {\r
+  // The previous scan may still be reading scanTemp\r
+  workgroupBarrier();\r
+  var inclusive = values;\r
+  var buf = 0u;\r
+  for (var offset = 1u; offset < blockSize; offset *= 2u) {\r
+    scanTemp[buf][localID] = inclusive;\r
+    workgroupBarrier();\r
+    if (localID >= offset) {\r
+      inclusive += scanTemp[buf][localID - offset];\r
+    }\r
+    buf ^= 1u;\r
+  }\r
+  buf ^= 1u;\r
+  // The last step stored sums of each half of the rows\r
+  let rowTotals = scanTemp[buf][blockSize - 1u] + scanTemp[buf][blockSize / 2u - 1u];\r
+  *total = rowTotals.x + rowTotals.y + rowTotals.z + rowTotals.w;\r
+  return inclusive - values + vec4<u32>(0u, rowTotals.x, rowTotals.x + rowTotals.y, *total - rowTotals.w);\r
+}\r
+`,y=`@binding(0) @group(0) var<uniform> params : Params;\r
+@binding(1) @group(0) var<storage, read> gridOffsetsIn : array<u32>;\r
+@binding(2) @group(0) var<storage, read_write> gridSums : array<u32>;\r
+\r
+var<workgroup> sumTemp : array<u32, blockSize>;\r
+\r
+@compute @workgroup_size(blockSize)\r
+fn main(@builtin(local_invocation_index) localID : u32, @builtin(workgroup_id) GroupID : vec3<u32>) {\r
+  let groupID = GroupID.x;\r
+\r
+  var sum = 0u;\r
+  for (var row = 0u; row < 4u; row += 1u) {\r
+    let cell = getCell(groupID, localID, row);\r
+    if (cell < params.gridTotalCells) {\r
+      sum += gridOffsetsIn[cell];\r
+    }\r
+  }\r
+  sumTemp[localID] = sum;\r
+  workgroupBarrier();\r
+\r
+  for (var stride = blockSize / 2u; stride > 0u; stride /= 2u) {\r
+    if (localID < stride) {\r
+      sumTemp[localID] += sumTemp[localID + stride];\r
+    }\r
+    workgroupBarrier();\r
+  }\r
+\r
+  if (localID == 0u) {\r
+    gridSums[groupID] = sumTemp[0];\r
+  }\r
+}\r
+`,b=`@binding(0) @group(0) var<uniform> params : Params;\r
+@binding(1) @group(0) var<storage, read_write> gridSums : array<u32>;\r
+\r
+// Single group, turns the block totals into block offsets in place\r
+@compute @workgroup_size(blockSize)\r
+fn main(@builtin(local_invocation_index) localID : u32) {\r
+  var carry = 0u;\r
+  for (var first = 0u; first < params.blocks; first += blockCells) {\r
+    var sums = vec4<u32>();\r
+    for (var row = 0u; row < 4u; row += 1u) {\r
+      let i = first + row * blockSize + localID;\r
+      if (i < params.blocks) {\r
+        sums[row] = gridSums[i];\r
+      }\r
+    }\r
+\r
+    var total = 0u;\r
+    let offsets = groupScan(sums, localID, &total) + carry;\r
+    for (var row = 0u; row < 4u; row += 1u) {\r
+      let i = first + row * blockSize + localID;\r
+      if (i < params.blocks) {\r
+        gridSums[i] = offsets[row];\r
+      }\r
+    }\r
+    carry += total;\r
+  }\r
+}\r
+`,x=`@binding(0) @group(0) var<uniform> params : Params;\r
+@binding(1) @group(0) var<storage, read_write> gridOffsetsIn : array<u32>;\r
+@binding(2) @group(0) var<storage, read_write> gridOffsets : array<u32>;\r
+@binding(3) @group(0) var<storage, read> gridSums : array<u32>;\r
+\r
+// Scans each block of cells, starting from the block's offset from scanSums\r
+@compute @workgroup_size(blockSize)\r
+fn main(@builtin(local_invocation_index) localID : u32, @builtin(workgroup_id) GroupID : vec3<u32>) {\r
+  let groupID = GroupID.x;\r
+\r
+  var counts = vec4<u32>();\r
+  for (var row = 0u; row < 4u; row += 1u) {\r
+    let cell = getCell(groupID, localID, row);\r
+    if (cell < params.gridTotalCells) {\r
+      counts[row] = gridOffsetsIn[cell];\r
+    }\r
+  }\r
+\r
+  var total = 0u;\r
+  let offsets = groupScan(counts, localID, &total) + gridSums[groupID];\r
+  for (var row = 0u; row < 4u; row += 1u) {\r
+    let cell = getCell(groupID, localID, row);\r
+    if (cell < params.gridTotalCells) {\r
+      gridOffsets[cell] = offsets[row];\r
+      // Reset the counts so the boids kernel can fill them in for next frame\r
+      gridOffsetsIn[cell] = 0u;\r
+    }\r
+  }\r
+}\r
 `,S=`@binding(0) @group(0) var<uniform> params : Params;
 // Each boid's (cell, rank in that cell), from when the boid was binned
 @binding(1) @group(0) var<storage, read> grid : array<vec2<u32>>;
