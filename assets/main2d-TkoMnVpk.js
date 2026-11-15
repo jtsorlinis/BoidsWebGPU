@@ -1,4 +1,4 @@
-import{a as e,c as t,g as n,r,s as i}from"./gpu-5JyGwGJJ.js";import{A as a,C as o,E as s,M as c,N as l,S as u,b as d,g as f,h as p,j as m,t as h,y as g}from"./three.tsl-Dps69N2D.js";var _={label:`2d`,include:`// Shared by every 2D kernel\r
+import{a as e,c as t,g as n,r,s as i}from"./gpu-nS4QaLAx.js";import{A as a,C as o,E as s,M as c,N as l,S as u,b as d,g as f,h as p,j as m,t as h,y as g}from"./three.tsl-DK1reAP3.js";var _={label:`2d`,include:`// Shared by every 2D kernel\r
 \r
 struct Boid {\r
   pos : vec2<f32>,\r
@@ -168,18 +168,6 @@ fn keepInBounds(boid: ptr<function, Boid>) {\r
   (*boid).vel -= sign((*boid).pos) * outside * (params.turnSpeed * params.dt);\r
 }\r
 \r
-fn avoidPredators(boid: ptr<function, Boid>) {\r
-  let diff = (*boid).pos - params.mousePos;\r
-  let zoomedDist = length(diff) / params.zoom;\r
-  if (zoomedDist < 1.0\r
-      && abs((*boid).pos.y) < params.yBound\r
-      && abs((*boid).pos.x) < params.xBound) {\r
-    let dist = max(sqrt(params.minDistanceSq), zoomedDist);\r
-    let strength = max(1.0, 2.0 / params.zoom);\r
-    (*boid).vel += normalize(diff) / (dist * dist) * strength * params.dt;\r
-  }\r
-}\r
-\r
 @compute @workgroup_size(searchBlockSize)\r
 fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_index) localID : u32) {\r
   let first = (GroupID.y * params.updateGroupsX + GroupID.x) * searchBlockSize;\r
@@ -197,9 +185,6 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   mergedBehaviours(&boid, localID, firstCell, lastCell);\r
   limitSpeed(&boid);\r
   keepInBounds(&boid);\r
-  if (params.mousePredator > 0) {\r
-    avoidPredators(&boid);\r
-  }\r
 \r
   boid.pos += boid.vel * params.dt;\r
 \r
@@ -221,14 +206,8 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
 const boidScale : f32 = 0.1;
 // Covers the triangle's furthest corner from the boid's position, 0.64 away
 const boidReach : f32 = boidScale * 0.65;
-
-fn getBoidColour(boid: Boid) -> u32 {
-  var d = 1.0;
-  if (params.mousePredator > 0u) {
-    d = distance(boid.pos, params.mousePos) / params.zoom;
-  }
-  return pack4x8unorm(vec4<f32>(1.0, d, d, 1.0));
-}
+// White, packed as rgba8
+const boidColour : u32 = 0xffffffffu;
 
 fn rasterizeBoid(boid: Boid) {
   let rasterSize = vec2<f32>(f32(params.renderWidth), f32(params.renderHeight));
@@ -247,7 +226,6 @@ fn rasterizeBoid(boid: Boid) {
   // (-0.4, -0.5), (0, 0.5), (0.4, -0.5), pointing along its velocity
   let dir = normalize(boid.vel);
   let toMesh = 1.0 / (screenScale * boidScale);
-  let colour = getBoidColour(boid);
 
   for (var y = first.y; y <= last.y; y += 1) {
     let row = u32(y) * params.renderWidth;
@@ -256,9 +234,9 @@ fn rasterizeBoid(boid: Boid) {
       let along = dot(offset, dir);
       let across = offset.x * dir.y - offset.y * dir.x;
       if (along >= -0.5 && abs(across) <= 0.4 * (0.5 - along)) {
-        raster[row + u32(x)] = colour;
+        raster[row + u32(x)] = boidColour;
       }
     }
   }
 }
-`,viewBindings:[`raster`],boidBytes:16,searchBlockSize:128,tileSize:256,boidLimitPerGroup:1024},v=(e,t,n,r)=>{let a=g(e,`uint`,t*n).toReadOnly(),c=new i;return c.fragmentNode=h(()=>{let e=o(p),i=d(n-1).sub(e.y),c=a.element(i.mul(t).add(e.x));return f(c.equal(d(0)),s(...r,1),u(c))})(),c},y=[.19215687,.3019608,.4745098],b=async({device:i,renderer:o},s,u)=>{o.outputColorSpace=n;let d=await a(i,_,{mousePredator:`u32`,zoom:`f32`,mousePos:`vec2<f32>`,renderWidth:`u32`,renderHeight:`u32`,viewportHalfSize:`vec2<f32>`,cameraPos:`vec2<f32>`}),{params:f}=d,p=new AbortController,h=l(s,p.signal),g={x:0,y:0};s.addEventListener(`pointermove`,e=>{g.x=e.offsetX,g.y=e.offsetY},{signal:p.signal});let b=u,x=0,S=null,C=null,w=null,T=0,E=0,D=()=>{let n=Math.max(1,s.width),a=Math.max(1,s.height);(n!==T||a!==E)&&(C?.destroy(),w?.dispose(),C=r(i,n*a*4),T=n,E=a,w=v(e(o,C,1),n,a,y),S?S.material=w:S=new t(w),d.setViewBuffers({raster:C}))},O=()=>{h.resetView(Math.max(2,Math.sqrt(b)/10+m));let e=T/E,t=h.orthoSize*e-m,n=h.orthoSize-m,r=(Math.floor(t*2/c)+30)*2,i=Math.floor(n*2/c)+30;d.setup(b,r*i,{xBound:t,yBound:n,gridDimX:r,gridDimY:i})};return D(),O(),{boidLimit:d.boidLimit,frame:e=>{x>0&&(b=x,x=0,O()),D(),h.update(e);let t=T/E,n=(g.x/s.clientWidth-.5)*h.orthoSize*2*t+h.x,r=-(g.y/s.clientHeight-.5)*h.orthoSize*2+h.y;f.set(`zoom`,h.orthoSize/3),f.set(`mousePos`,[n,r]),f.set(`renderWidth`,T),f.set(`renderHeight`,E),f.set(`viewportHalfSize`,[h.orthoSize*t,h.orthoSize]),f.set(`cameraPos`,[h.x,h.y]);let a=i.createCommandEncoder();a.clearBuffer(C),d.encode(a,e),i.queue.submit([a.finish()]),S.render(o)},setNumBoids:e=>{x=Math.min(e,d.boidLimit)},setPredator:e=>{f.set(`mousePredator`,+!!e)},dispose:()=>{p.abort(),d.dispose(),C?.destroy(),w?.dispose()}}};export{b as createSim};
+`,viewBindings:[`raster`],boidBytes:16,searchBlockSize:128,tileSize:256,boidLimitPerGroup:1024},v=(e,t,n,r)=>{let a=g(e,`uint`,t*n).toReadOnly(),c=new i;return c.fragmentNode=h(()=>{let e=o(p),i=d(n-1).sub(e.y),c=a.element(i.mul(t).add(e.x));return f(c.equal(d(0)),s(...r,1),u(c))})(),c},y=[.19215687,.3019608,.4745098],b=async({device:i,renderer:o},s,u)=>{o.outputColorSpace=n;let d=await a(i,_,{renderWidth:`u32`,renderHeight:`u32`,viewportHalfSize:`vec2<f32>`,cameraPos:`vec2<f32>`}),{params:f}=d,p=new AbortController,h=l(s,p.signal),g=u,b=0,x=null,S=null,C=null,w=0,T=0,E=()=>{let n=Math.max(1,s.width),a=Math.max(1,s.height);(n!==w||a!==T)&&(S?.destroy(),C?.dispose(),S=r(i,n*a*4),w=n,T=a,C=v(e(o,S,1),n,a,y),x?x.material=C:x=new t(C),d.setViewBuffers({raster:S}))},D=()=>{h.resetView(Math.max(2,Math.sqrt(g)/10+m));let e=w/T,t=h.orthoSize*e-m,n=h.orthoSize-m,r=(Math.floor(t*2/c)+30)*2,i=Math.floor(n*2/c)+30;d.setup(g,r*i,{xBound:t,yBound:n,gridDimX:r,gridDimY:i})};return E(),D(),{boidLimit:d.boidLimit,frame:e=>{b>0&&(g=b,b=0,D()),E(),h.update(e);let t=w/T;f.set(`renderWidth`,w),f.set(`renderHeight`,T),f.set(`viewportHalfSize`,[h.orthoSize*t,h.orthoSize]),f.set(`cameraPos`,[h.x,h.y]);let n=i.createCommandEncoder();n.clearBuffer(S),d.encode(n,e),i.queue.submit([n.finish()]),x.render(o)},setNumBoids:e=>{b=Math.min(e,d.boidLimit)},dispose:()=>{p.abort(),d.dispose(),S?.destroy(),C?.dispose()}}};export{b as createSim};
