@@ -15,9 +15,6 @@ export const createSim = async (
   renderer.outputColorSpace = LinearSRGBColorSpace;
 
   const compute = await createBoidCompute(device, kernels2d, {
-    mousePredator: "u32",
-    zoom: "f32",
-    mousePos: "vec2<f32>",
     renderWidth: "u32",
     renderHeight: "u32",
     viewportHalfSize: "vec2<f32>",
@@ -27,17 +24,6 @@ export const createSim = async (
 
   const abort = new AbortController();
   const view = createCamera2D(canvas, abort.signal);
-
-  // Where the pointer is on the canvas, in CSS pixels
-  const pointer = { x: 0, y: 0 };
-  canvas.addEventListener(
-    "pointermove",
-    (event) => {
-      pointer.x = event.offsetX;
-      pointer.y = event.offsetY;
-    },
-    { signal: abort.signal },
-  );
 
   let numBoids = initialBoids;
   let pendingNumBoids = 0;
@@ -108,12 +94,6 @@ export const createSim = async (
     view.update(deltaTime);
 
     const aspect = rasterWidth / rasterHeight;
-    const mouseX =
-      (pointer.x / canvas.clientWidth - 0.5) * view.orthoSize * 2 * aspect + view.x;
-    const mouseY =
-      -(pointer.y / canvas.clientHeight - 0.5) * view.orthoSize * 2 + view.y;
-    params.set("zoom", view.orthoSize / 3);
-    params.set("mousePos", [mouseX, mouseY]);
     params.set("renderWidth", rasterWidth);
     params.set("renderHeight", rasterHeight);
     params.set("viewportHalfSize", [view.orthoSize * aspect, view.orthoSize]);
@@ -133,9 +113,6 @@ export const createSim = async (
     frame,
     setNumBoids: (count: number) => {
       pendingNumBoids = Math.min(count, compute.boidLimit);
-    },
-    setPredator: (enabled: boolean) => {
-      params.set("mousePredator", enabled ? 1 : 0);
     },
     dispose: () => {
       abort.abort();

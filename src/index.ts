@@ -41,7 +41,6 @@ const startSim = async (is3D: boolean) => {
 
 ui.on.viewChanged = startSim;
 ui.on.numBoidsChanged = (count) => sim?.setNumBoids(count);
-ui.on.predatorChanged = (enabled) => sim?.setPredator(enabled);
 
 const resize = () => {
   const width = Math.max(1, canvas.clientWidth);

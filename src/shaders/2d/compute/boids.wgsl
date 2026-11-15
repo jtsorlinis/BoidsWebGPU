@@ -123,18 +123,6 @@ fn keepInBounds(boid: ptr<function, Boid>) {
   (*boid).vel -= sign((*boid).pos) * outside * (params.turnSpeed * params.dt);
 }
 
-fn avoidPredators(boid: ptr<function, Boid>) {
-  let diff = (*boid).pos - params.mousePos;
-  let zoomedDist = length(diff) / params.zoom;
-  if (zoomedDist < 1.0
-      && abs((*boid).pos.y) < params.yBound
-      && abs((*boid).pos.x) < params.xBound) {
-    let dist = max(sqrt(params.minDistanceSq), zoomedDist);
-    let strength = max(1.0, 2.0 / params.zoom);
-    (*boid).vel += normalize(diff) / (dist * dist) * strength * params.dt;
-  }
-}
-
 @compute @workgroup_size(searchBlockSize)
 fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_index) localID : u32) {
   let first = (GroupID.y * params.updateGroupsX + GroupID.x) * searchBlockSize;
@@ -152,9 +140,6 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   mergedBehaviours(&boid, localID, firstCell, lastCell);
   limitSpeed(&boid);
   keepInBounds(&boid);
-  if (params.mousePredator > 0) {
-    avoidPredators(&boid);
-  }
 
   boid.pos += boid.vel * params.dt;
 

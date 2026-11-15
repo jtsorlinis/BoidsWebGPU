@@ -243,43 +243,6 @@ body {
   color: var(--text-faint);
 }
 
-/* Toggle switch */
-
-.card .toggle {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  margin: 0;
-  border-radius: 10px;
-  background-color: var(--control);
-  appearance: none;
-  cursor: pointer;
-  transition: background-color 0.12s;
-}
-
-.card .toggle::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  background-color: var(--text-muted);
-  transition:
-    translate 0.12s,
-    background-color 0.12s;
-}
-
-.card .toggle:checked {
-  background-color: var(--accent);
-}
-
-.card .toggle:checked::after {
-  translate: 16px 0;
-  background-color: white;
-}
-
 /* Footer */
 
 .card .hint {

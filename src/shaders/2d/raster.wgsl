@@ -3,14 +3,8 @@
 const boidScale : f32 = 0.1;
 // Covers the triangle's furthest corner from the boid's position, 0.64 away
 const boidReach : f32 = boidScale * 0.65;
-
-fn getBoidColour(boid: Boid) -> u32 {
-  var d = 1.0;
-  if (params.mousePredator > 0u) {
-    d = distance(boid.pos, params.mousePos) / params.zoom;
-  }
-  return pack4x8unorm(vec4<f32>(1.0, d, d, 1.0));
-}
+// White, packed as rgba8
+const boidColour : u32 = 0xffffffffu;
 
 fn rasterizeBoid(boid: Boid) {
   let rasterSize = vec2<f32>(f32(params.renderWidth), f32(params.renderHeight));
@@ -29,7 +23,6 @@ fn rasterizeBoid(boid: Boid) {
   // (-0.4, -0.5), (0, 0.5), (0.4, -0.5), pointing along its velocity
   let dir = normalize(boid.vel);
   let toMesh = 1.0 / (screenScale * boidScale);
-  let colour = getBoidColour(boid);
 
   for (var y = first.y; y <= last.y; y += 1) {
     let row = u32(y) * params.renderWidth;
@@ -38,7 +31,7 @@ fn rasterizeBoid(boid: Boid) {
       let along = dot(offset, dir);
       let across = offset.x * dir.y - offset.y * dir.x;
       if (along >= -0.5 && abs(across) <= 0.4 * (0.5 - along)) {
-        raster[row + u32(x)] = colour;
+        raster[row + u32(x)] = boidColour;
       }
     }
   }
