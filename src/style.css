@@ -120,9 +120,18 @@ body {
   display: none;
 }
 
+/* No control here to give the row its height, so it keeps a line's worth */
 .card .row--slider {
+  min-height: 17px;
   margin-top: 2px;
   margin-bottom: 2px;
+}
+
+/* Trimmed to the letters, so they centre on their row without room left for descenders */
+.card .row-label,
+.card .row-value,
+.card .segment {
+  text-box: trim-both cap alphabetic;
 }
 
 .card .row-label {
@@ -154,7 +163,6 @@ body {
   background-color: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-weight: bold;
   cursor: pointer;
   transition:
     background-color 0.12s,
