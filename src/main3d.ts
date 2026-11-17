@@ -25,7 +25,12 @@ import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import { createCamera3D } from "./cameras";
 import { createBoidCompute, edgeMargin, visualRange } from "./compute";
 import { type GPUContext, shareWithRenderer } from "./gpu";
-import { createBoidMaterial, kernels3d, skyNode } from "./shaders/3d";
+import {
+  boidVertices,
+  createBoidMaterial,
+  kernels3d,
+  skyNode,
+} from "./shaders/3d";
 
 const sunDirection = new Vector3(
   -0.3213937660622072,
@@ -127,8 +132,23 @@ export const createSim = async (
   let viewWidth = 0;
   let viewHeight = 0;
 
-  // One for each boid buffer, the boids are drawn from whichever was just written
-  let boidMaterials: MeshStandardNodeMaterial[] = [];
+  // One of each for each boid buffer, the boids are drawn from whichever was just written
+  let triangleMaterials: MeshStandardNodeMaterial[] = [];
+  let birdMaterials: MeshStandardNodeMaterial[] = [];
+  // On to begin with, like the card's switch
+  let birds = true;
+
+  // Draws the boids just written, as the shape picked
+  const showBoids = () => {
+    boidMesh.material = (birds ? birdMaterials : triangleMaterials)[compute.current];
+    boidGeometry.setDrawRange(0, numBoids * boidVertices(birds));
+  };
+
+  const disposeMaterials = () => {
+    for (const material of [...triangleMaterials, ...birdMaterials]) {
+      material.dispose();
+    }
+  };
 
   const updateShadows = (spaceBounds: number) => {
     const shadowDistance = spaceBounds * 6.5;
@@ -170,7 +190,7 @@ export const createSim = async (
     const gridDimY = Math.floor((yBound * 2) / visualRange) + 20;
     const gridDimZ = Math.floor((zBound * 2) / visualRange) + 20;
 
-    for (const material of boidMaterials) material.dispose();
+    disposeMaterials();
     compute.setup(numBoids, gridDimX * gridDimY * gridDimZ, {
       xBound,
       yBound,
@@ -180,11 +200,17 @@ export const createSim = async (
       gridDimZ,
     });
 
-    boidMaterials = compute.boidBuffers.map((boids) =>
-      createBoidMaterial(shareWithRenderer(renderer, boids, 1), numBoids),
+    // Only the shape that's drawn gets its shaders built
+    const buffers = compute.boidBuffers.map((boids) =>
+      shareWithRenderer(renderer, boids, 1),
     );
-    boidMesh.material = boidMaterials[compute.current];
-    boidGeometry.setDrawRange(0, numBoids * 3);
+    triangleMaterials = buffers.map((boids) =>
+      createBoidMaterial(boids, numBoids, false),
+    );
+    birdMaterials = buffers.map((boids) =>
+      createBoidMaterial(boids, numBoids, true),
+    );
+    showBoids();
   };
 
   setup();
@@ -212,8 +238,7 @@ export const createSim = async (
     compute.encode(encoder, deltaTime);
     device.queue.submit([encoder.finish()]);
 
-    // Draw the boids just written
-    boidMesh.material = boidMaterials[compute.current];
+    showBoids();
     renderer.render(scene, camera);
   };
 
@@ -223,9 +248,12 @@ export const createSim = async (
     setNumBoids: (count: number) => {
       pendingNumBoids = Math.min(count, compute.boidLimit);
     },
+    setBirds: (enabled: boolean) => {
+      birds = enabled;
+    },
     dispose: () => {
       abort.abort();
-      for (const material of boidMaterials) material.dispose();
+      disposeMaterials();
       compute.dispose();
       csm.dispose();
       sun.shadow.dispose();

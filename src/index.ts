@@ -2,7 +2,10 @@ import "./style.css";
 import { initRenderer } from "./gpu";
 import { createUI, initialBoids } from "./ui";
 
-type Sim = Awaited<ReturnType<typeof import("./main2d").createSim>>;
+type Sim = Awaited<ReturnType<typeof import("./main2d").createSim>> & {
+  // Only the 3D view's boids can be drawn as birds
+  setBirds?: (enabled: boolean) => void;
+};
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const loader = document.getElementById("loader") as HTMLElement;
@@ -41,6 +44,7 @@ const startSim = async (is3D: boolean) => {
 
 ui.on.viewChanged = startSim;
 ui.on.numBoidsChanged = (count) => sim?.setNumBoids(count);
+ui.on.birdsChanged = (enabled) => sim?.setBirds?.(enabled);
 
 const resize = () => {
   const width = Math.max(1, canvas.clientWidth);

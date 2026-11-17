@@ -18,6 +18,8 @@ export const createUI = () => {
   const view2D = getElement<HTMLButtonElement>("view-2d");
   const view3D = getElement<HTMLButtonElement>("view-3d");
   const slider = getElement<HTMLInputElement>("boid-slider");
+  const birdsRow = getElement("birds-row");
+  const birdsToggle = getElement<HTMLInputElement>("birds-toggle");
   const hint = getElement("hint");
 
   let numBoids = initialBoids;
@@ -29,6 +31,7 @@ export const createUI = () => {
   const handlers = {
     numBoidsChanged: (_count: number) => {},
     viewChanged: (_is3D: boolean) => {},
+    birdsChanged: (_enabled: boolean) => {},
   };
 
   // Slider position is log2 of the boid count, so each octave gets the same travel.
@@ -52,6 +55,8 @@ export const createUI = () => {
     maxLabel.textContent = format(maxBoids);
     view2D.classList.toggle("segment--selected", !is3D);
     view3D.classList.toggle("segment--selected", is3D);
+    // Only the 3D view's boids can be drawn as birds
+    birdsRow.hidden = !is3D;
     hint.textContent = is3D
       ? "Drag to look around\nWASD + Q/E while dragging to fly\nHold Shift to fly faster"
       : "Drag to pan · Scroll to zoom";
@@ -76,6 +81,11 @@ export const createUI = () => {
   // Keep arrow keys for flying rather than the slider
   slider.onpointerup = () => slider.blur();
 
+  birdsToggle.onchange = () => {
+    birdsToggle.blur();
+    handlers.birdsChanged(birdsToggle.checked);
+  };
+
   minLabel.textContent = format(minBoids);
   refresh();
 
@@ -85,6 +95,7 @@ export const createUI = () => {
     setView: (view3D: boolean) => {
       is3D = view3D;
       numBoids = initialBoids;
+      birdsToggle.checked = true;
       refresh();
     },
 
