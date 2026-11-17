@@ -201,42 +201,42 @@ fn main(@builtin(workgroup_id) GroupID : vec3<u32>, @builtin(local_invocation_in
   }\r
 }\r
 
-// Draws boids into the raster, for the 2D boids kernel
-
-const boidScale : f32 = 0.1;
-// Covers the triangle's furthest corner from the boid's position, 0.64 away
-const boidReach : f32 = boidScale * 0.65;
-// White, packed as rgba8
-const boidColour : u32 = 0xffffffffu;
-
-fn rasterizeBoid(boid: Boid) {
-  let rasterSize = vec2<f32>(f32(params.renderWidth), f32(params.renderHeight));
-  let screenScale = rasterSize / (params.viewportHalfSize * 2.0);
-  let center = boid.pos * screenScale + rasterSize * 0.5 - params.cameraPos * screenScale;
-
-  // Only the on screen pixels whose centres are within the boid's reach
-  let reach = boidReach * screenScale;
-  let first = max(vec2<i32>(ceil(center - reach - 0.5)), vec2<i32>(0));
-  let last = min(vec2<i32>(floor(center + reach - 0.5)), vec2<i32>(i32(params.renderWidth), i32(params.renderHeight)) - 1);
-  if (first.x > last.x || first.y > last.y) {
-    return;
-  }
-
-  // Each pixel centre is tested in the boid's own axes against the triangle
-  // (-0.4, -0.5), (0, 0.5), (0.4, -0.5), pointing along its velocity
-  let dir = normalize(boid.vel);
-  let toMesh = 1.0 / (screenScale * boidScale);
-
-  for (var y = first.y; y <= last.y; y += 1) {
-    let row = u32(y) * params.renderWidth;
-    for (var x = first.x; x <= last.x; x += 1) {
-      let offset = (vec2<f32>(f32(x), f32(y)) + 0.5 - center) * toMesh;
-      let along = dot(offset, dir);
-      let across = offset.x * dir.y - offset.y * dir.x;
-      if (along >= -0.5 && abs(across) <= 0.4 * (0.5 - along)) {
-        raster[row + u32(x)] = boidColour;
-      }
-    }
-  }
-}
+// Draws boids into the raster, for the 2D boids kernel\r
+\r
+const boidScale : f32 = 0.1;\r
+// Covers the triangle's furthest corner from the boid's position, 0.64 away\r
+const boidReach : f32 = boidScale * 0.65;\r
+// White, packed as rgba8\r
+const boidColour : u32 = 0xffffffffu;\r
+\r
+fn rasterizeBoid(boid: Boid) {\r
+  let rasterSize = vec2<f32>(f32(params.renderWidth), f32(params.renderHeight));\r
+  let screenScale = rasterSize / (params.viewportHalfSize * 2.0);\r
+  let center = boid.pos * screenScale + rasterSize * 0.5 - params.cameraPos * screenScale;\r
+\r
+  // Only the on screen pixels whose centres are within the boid's reach\r
+  let reach = boidReach * screenScale;\r
+  let first = max(vec2<i32>(ceil(center - reach - 0.5)), vec2<i32>(0));\r
+  let last = min(vec2<i32>(floor(center + reach - 0.5)), vec2<i32>(i32(params.renderWidth), i32(params.renderHeight)) - 1);\r
+  if (first.x > last.x || first.y > last.y) {\r
+    return;\r
+  }\r
+\r
+  // Each pixel centre is tested in the boid's own axes against the triangle\r
+  // (-0.4, -0.5), (0, 0.5), (0.4, -0.5), pointing along its velocity\r
+  let dir = normalize(boid.vel);\r
+  let toMesh = 1.0 / (screenScale * boidScale);\r
+\r
+  for (var y = first.y; y <= last.y; y += 1) {\r
+    let row = u32(y) * params.renderWidth;\r
+    for (var x = first.x; x <= last.x; x += 1) {\r
+      let offset = (vec2<f32>(f32(x), f32(y)) + 0.5 - center) * toMesh;\r
+      let along = dot(offset, dir);\r
+      let across = offset.x * dir.y - offset.y * dir.x;\r
+      if (along >= -0.5 && abs(across) <= 0.4 * (0.5 - along)) {\r
+        raster[row + u32(x)] = boidColour;\r
+      }\r
+    }\r
+  }\r
+}\r
 `,viewBindings:[`raster`],boidBytes:16,searchBlockSize:128,tileSize:256,boidLimitPerGroup:1024},v=(e,t,n,r)=>{let a=g(e,`uint`,t*n).toReadOnly(),c=new i;return c.fragmentNode=h(()=>{let e=o(p),i=d(n-1).sub(e.y),c=a.element(i.mul(t).add(e.x));return f(c.equal(d(0)),s(...r,1),u(c))})(),c},y=[.19215687,.3019608,.4745098],b=async({device:i,renderer:o},s,u)=>{o.outputColorSpace=n;let d=await a(i,_,{renderWidth:`u32`,renderHeight:`u32`,viewportHalfSize:`vec2<f32>`,cameraPos:`vec2<f32>`}),{params:f}=d,p=new AbortController,h=l(s,p.signal),g=u,b=0,x=null,S=null,C=null,w=0,T=0,E=()=>{let n=Math.max(1,s.width),a=Math.max(1,s.height);(n!==w||a!==T)&&(S?.destroy(),C?.dispose(),S=r(i,n*a*4),w=n,T=a,C=v(e(o,S,1),n,a,y),x?x.material=C:x=new t(C),d.setViewBuffers({raster:S}))},D=()=>{h.resetView(Math.max(2,Math.sqrt(g)/10+m));let e=w/T,t=h.orthoSize*e-m,n=h.orthoSize-m,r=(Math.floor(t*2/c)+30)*2,i=Math.floor(n*2/c)+30;d.setup(g,r*i,{xBound:t,yBound:n,gridDimX:r,gridDimY:i})};return E(),D(),{boidLimit:d.boidLimit,frame:e=>{b>0&&(g=b,b=0,D()),E(),h.update(e);let t=w/T;f.set(`renderWidth`,w),f.set(`renderHeight`,T),f.set(`viewportHalfSize`,[h.orthoSize*t,h.orthoSize]),f.set(`cameraPos`,[h.x,h.y]);let n=i.createCommandEncoder();n.clearBuffer(S),d.encode(n,e),i.queue.submit([n.finish()]),x.render(o)},setNumBoids:e=>{b=Math.min(e,d.boidLimit)},dispose:()=>{p.abort(),d.dispose(),S?.destroy(),C?.dispose()}}};export{b as createSim};
