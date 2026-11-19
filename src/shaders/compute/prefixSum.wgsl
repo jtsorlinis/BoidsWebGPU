@@ -23,7 +23,9 @@ fn main(@builtin(local_invocation_index) localID : u32, @builtin(workgroup_id) G
     if (cell < params.gridTotalCells) {
       gridOffsets[cell] = offsets[row];
       // Reset the counts so the boids kernel can fill them in for next frame
-      gridOffsetsIn[cell] = 0u;
+      if (counts[row] != 0u) {
+        gridOffsetsIn[cell] = 0u;
+      }
     }
   }
 }
