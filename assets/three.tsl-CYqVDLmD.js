@@ -115,24 +115,24 @@ fn main(@builtin(local_invocation_index) localID : u32, @builtin(workgroup_id) G
     }\r
   }\r
 }\r
-`,S=`@binding(0) @group(0) var<uniform> params : Params;
-// Each boid's (cell, rank in that cell), from when the boid was binned
-@binding(1) @group(0) var<storage, read> grid : array<vec2<u32>>;
-@binding(2) @group(0) var<storage, read> gridOffsets : array<u32>;
-@binding(3) @group(0) var<storage, read_write> sortedIndices : array<u32>;
-
-@compute @workgroup_size(boidBlockSize)
-fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {
-  let index = getBoidIndex(GlobalInvocationID);
-
-  if (index >= params.numBoids) {
-    return;
-  }
-
-  // Only the index moves, the boids kernel reads the boid through it
-  let slot = grid[index];
-  sortedIndices[gridOffsets[slot.x] + slot.y] = index;
-}
+`,S=`@binding(0) @group(0) var<uniform> params : Params;\r
+// Each boid's (cell, rank in that cell), from when the boid was binned\r
+@binding(1) @group(0) var<storage, read> grid : array<vec2<u32>>;\r
+@binding(2) @group(0) var<storage, read> gridOffsets : array<u32>;\r
+@binding(3) @group(0) var<storage, read_write> sortedIndices : array<u32>;\r
+\r
+@compute @workgroup_size(boidBlockSize)\r
+fn main(@builtin(global_invocation_id) GlobalInvocationID : vec3<u32>) {\r
+  let index = getBoidIndex(GlobalInvocationID);\r
+\r
+  if (index >= params.numBoids) {\r
+    return;\r
+  }\r
+\r
+  // Only the index moves, the boids kernel reads the boid through it\r
+  let slot = grid[index];\r
+  sortedIndices[gridOffsets[slot.x] + slot.y] = index;\r
+}\r
 `,C=256,w=C*4,T=(e,t,n)=>{let r=Math.ceil(e/t),i=Math.max(1,Math.ceil(r/n));return[Math.ceil(r/i),i]},E=(e,t)=>`
 const boidBlockSize: u32 = 256;
 const blockSize: u32 = ${C};

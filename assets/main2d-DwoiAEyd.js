@@ -1,4 +1,4 @@
-import{a as e,c as t,g as n,r,s as i}from"./gpu-nS4QaLAx.js";import{A as a,C as o,E as s,M as c,N as l,S as u,b as d,g as f,h as p,j as m,t as h,y as g}from"./three.tsl-RYta_TSk.js";var _={label:`2d`,include:`// Shared by every 2D kernel\r
+import{a as e,c as t,g as n,r,s as i}from"./gpu-nS4QaLAx.js";import{A as a,C as o,E as s,M as c,N as l,S as u,b as d,g as f,h as p,j as m,t as h,y as g}from"./three.tsl-CYqVDLmD.js";var _={label:`2d`,include:`// Shared by every 2D kernel\r
 \r
 struct Boid {\r
   pos : vec2<f32>,\r
