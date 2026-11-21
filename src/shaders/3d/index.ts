@@ -30,7 +30,8 @@ export const kernels3d: BoidKernels = {
   // A PackedBoid3d
   boidBytes: 24,
   searchBlockSize: 64,
-  tileSize: 160,
+  // As big as it goes: past 5,376 bytes of shared memory a group, an RTX 4070 slows down
+  tileSize: 224,
   boidLimitPerGroup: 256,
 };
 
